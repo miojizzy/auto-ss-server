@@ -1,0 +1,116 @@
+# AWS 区域配置
+# 每个区域包含：镜像ID、默认实例类型、密钥对名称
+
+regions:
+  # 亚太地区
+  ap-northeast-1:
+    name: "东京"
+    ami_id: "ami-0fe22bffdec36361c"
+    default_instance_type: "t2.nano"
+    key_name: "ap-northeast-1"
+    description: "日本东京，低延迟，适合亚洲用户"
+    
+  ap-northeast-2:
+    name: "首尔"
+    ami_id: "ami-0c55b159cbfafe1f0"
+    default_instance_type: "t2.nano"
+    key_name: "ap-northeast-2"
+    description: "韩国首尔，低延迟，适合亚洲用户"
+    
+  ap-northeast-3:
+    name: "大阪"
+    ami_id: "ami-0d52744c7b0fb8c46"
+    default_instance_type: "t2.nano"
+    key_name: "ap-northeast-3"
+    description: "日本大阪，低延迟，适合亚洲用户"
+    
+  ap-southeast-1:
+    name: "新加坡"
+    ami_id: "ami-0b84c2d3cb9fa32d8"
+    default_instance_type: "t2.nano"
+    key_name: "ap-southeast-1"
+    description: "新加坡，低延迟，适合东南亚用户"
+    
+  ap-southeast-2:
+    name: "悉尼"
+    ami_id: "ami-02fd34cc6e5255d7e"
+    default_instance_type: "t2.nano"
+    key_name: "ap-southeast-2"
+    description: "澳大利亚悉尼，适合大洋洲用户"
+    
+  ap-south-1:
+    name: "孟买"
+    ami_id: "ami-0470e33cd681b2476"
+    default_instance_type: "t2.nano"
+    key_name: "ap-south-1"
+    description: "印度孟买，适合南亚用户"
+    
+  ap-east-1:
+    name: "香港"
+    ami_id: "ami-0c9a6661f27e0a8e9"
+    default_instance_type: "t2.nano"
+    key_name: "ap-east-1"
+    description: "香港，低延迟，适合中国大陆用户"
+
+  # 美洲地区
+  us-west-1:
+    name: "美西(北加州)"
+    ami_id: "ami-0bdb828fd58c52235"
+    default_instance_type: "t2.nano"
+    key_name: "us-west-1"
+    description: "美国北加州，适合北美西海岸用户"
+    
+  us-west-2:
+    name: "美西(俄勒冈)"
+    ami_id: "ami-0abcdef1234567890"
+    default_instance_type: "t2.nano"
+    key_name: "us-west-2"
+    description: "美国俄勒冈，价格较低"
+    
+  us-east-1:
+    name: "美东(弗吉尼亚)"
+    ami_id: "ami-0c55b159cbfafe1f0"
+    default_instance_type: "t2.nano"
+    key_name: "us-east-1"
+    description: "美国弗吉尼亚，服务最全"
+    
+  us-east-2:
+    name: "美东(俄亥俄)"
+    ami_id: "ami-0d5d3d8b2f0c0e8a1"
+    default_instance_type: "t2.nano"
+    key_name: "us-east-2"
+    description: "美国俄亥俄，价格较低"
+
+  # 欧洲地区
+  eu-west-1:
+    name: "爱尔兰"
+    ami_id: "ami-0fedcba0987654321"
+    default_instance_type: "t2.nano"
+    key_name: "eu-west-1"
+    description: "爱尔兰，适合欧洲用户"
+    
+  eu-west-2:
+    name: "伦敦"
+    ami_id: "ami-0a2e1f2c3d4e5f6a7"
+    default_instance_type: "t2.nano"
+    key_name: "eu-west-2"
+    description: "英国伦敦，适合英国用户"
+    
+  eu-central-1:
+    name: "法兰克福"
+    ami_id: "ami-0b1c2d3e4f5a6b7c8"
+    default_instance_type: "t2.nano"
+    key_name: "eu-central-1"
+    description: "德国法兰克福，适合中欧用户"
+
+# 默认区域
+default_region: "ap-northeast-1"
+
+# 实例类型价格参考（美元/小时，t2.nano 为基准）
+instance_type_pricing:
+  t2.nano: 0.0059
+  t2.micro: 0.0116
+  t2.small: 0.023
+  t3.nano: 0.0052
+  t3.micro: 0.0104
+  t3.small: 0.0208

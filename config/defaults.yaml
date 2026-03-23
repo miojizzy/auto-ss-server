@@ -1,0 +1,59 @@
+# 默认配置
+# 当命令行未指定参数时使用这些默认值
+
+# Shadowsocks 默认配置
+shadowsocks:
+  # 默认端口配置（端口: 密码）
+  default_ports:
+    - port: 2333
+      password: "change_me_password"
+    - port: 2334
+      password: "change_me_password"
+  
+  # 默认加密方式
+  # 可选: chacha20-ietf-poly1305, aes-256-gcm, aes-128-gcm, aes-256-cfb
+  default_method: "chacha20-ietf-poly1305"
+  
+  # 服务器类型: outline (推荐) 或 python
+  server_type: "outline"
+
+# AWS 默认配置
+aws:
+  # 默认实例类型
+  default_instance_type: "t2.nano"
+  
+  # 默认启动模板名称
+  default_template_name: "auto_ss"
+  
+  # 安全组名称前缀
+  security_group_prefix: "auto_ss_sg"
+  
+  # 是否启用详细日志
+  verbose: false
+
+# 网络配置
+network:
+  # 超时时间（秒）
+  timeout: 300
+  
+  # 监控端口
+  metrics_port: 9091
+
+# 定时任务配置
+crontab:
+  # IP 检查间隔（分钟）
+  check_interval: 5
+  
+  # 最大丢包率阈值（%）
+  max_packet_loss: 50
+  
+  # 最大重试次数
+  max_retries: 3
+
+# 日志配置
+logging:
+  # 日志级别: DEBUG, INFO, WARNING, ERROR
+  level: "INFO"
+  
+  # 日志文件路径
+  file: "/var/log/auto_ssserver.log"

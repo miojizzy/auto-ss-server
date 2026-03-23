@@ -1,0 +1,23 @@
+# 自动 IP 检测配置文件
+# 被 update.sh 加载
+
+# AWS 区域
+AWS_REGION="ap-northeast-1"
+
+# SSH 密钥名称
+AWS_KEY_NAME="ap-northeast-1"
+
+# 启动模板名称
+LAUNCH_TEMPLATE_NAME="auto_ss"
+
+# 最大丢包率阈值（%）
+LOSS_MAX_LIMIT=50
+
+# Nginx 配置文件路径
+NGINX_CONF="/etc/nginx/conf.d/proxy.conf"
+
+# Nginx Docker 容器名称（留空表示非 Docker 部署）
+NGINX_DOCKER_NAME="nginx"
+
+# 日志文件路径
+LOG_FILE="/var/log/auto_ssserver.log"

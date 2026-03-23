@@ -1,0 +1,565 @@
+#!/usr/bin/env python3
+"""
+AWS EC2 Shadowsocks 实例管理工具
+
+子命令:
+  run       创建并启动新实例
+  desc      描述现有实例
+  term      终止实例
+  regions   列出可用区域
+  config    显示当前配置
+  template  管理启动模板
+
+使用示例:
+  awsl run -r ap-northeast-1 -p 2333:mypass -m chacha20-ietf-poly1305
+  awsl desc
+  awsl term i-0abc123def456
+  awsl regions
+"""
+
+import sys
+import os
+import json
+import argparse
+import base64
+from pathlib import Path
+from datetime import datetime
+
+try:
+    import yaml
+except ImportError:
+    yaml = None
+
+# 配置文件路径
+SCRIPT_DIR = Path(__file__).parent.resolve()
+PROJECT_ROOT = SCRIPT_DIR.parent.parent
+CONFIG_DIR = PROJECT_ROOT / "config"
+
+# Python 版本兼容
+if sys.version_info[0] < 3:
+    import commands
+    def run_cmd(cmd):
+        return commands.getoutput(cmd)
+else:
+    import subprocess
+    def run_cmd(cmd):
+        try:
+            return subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT).decode('utf-8')
+        except subprocess.CalledProcessError as e:
+            return e.output.decode('utf-8')
+
+
+def load_yaml_config(filepath):
+    """加载 YAML 配置文件"""
+    if yaml is None:
+        # 简单的 YAML 解析（仅支持基本结构）
+        with open(filepath, 'r') as f:
+            content = f.read()
+        return parse_simple_yaml(content)
+    with open(filepath, 'r') as f:
+        return yaml.safe_load(f)
+
+
+def parse_simple_yaml(content):
+    """简单 YAML 解析器"""
+    result = {}
+    current_indent = 0
+    key_stack = []
+    
+    for line in content.split('\n'):
+        stripped = line.strip()
+        if not stripped or stripped.startswith('#'):
+            continue
+        
+        indent = len(line) - len(line.lstrip())
+        if ':' in stripped:
+            key, _, value = stripped.partition(':')
+            key = key.strip()
+            value = value.strip().strip('"\'')
+            
+            # 调整层级
+            while key_stack and indent <= current_indent:
+                key_stack.pop()
+                current_indent -= 2
+            
+            # 构建嵌套字典
+            current = result
+            for k in key_stack:
+                current = current[k]
+            
+            if value:
+                current[key] = value
+            else:
+                current[key] = {}
+                key_stack.append(key)
+                current_indent = indent
+    
+    return result
+
+
+def load_config():
+    """加载所有配置"""
+    config = {
+        'regions': {},
+        'defaults': {}
+    }
+    
+    regions_file = CONFIG_DIR / "regions.yaml"
+    if regions_file.exists():
+        regions_data = load_yaml_config(regions_file)
+        config['regions'] = regions_data.get('regions', {})
+        config['default_region'] = regions_data.get('default_region', 'ap-northeast-1')
+    
+    defaults_file = CONFIG_DIR / "defaults.yaml"
+    if defaults_file.exists():
+        config['defaults'] = load_yaml_config(defaults_file)
+    
+    return config
+
+
+def parse_ports_config(ports_str):
+    """
+    解析端口配置字符串
+    
+    格式: port:password,port:password
+    示例: 2333:mypass1,2334:mypass2
+    
+    返回: [(port, password), ...]
+    """
+    if not ports_str:
+        return None
+    
+    result = []
+    for item in ports_str.split(','):
+        item = item.strip()
+        if ':' in item:
+            port, password = item.split(':', 1)
+            try:
+                result.append((int(port.strip()), password.strip()))
+            except ValueError:
+                print(f"警告: 无效的端口配置 '{item}'，已跳过")
+        else:
+            print(f"警告: 无效的端口配置 '{item}'，已跳过")
+    
+    return result if result else None
+
+
+def generate_outline_config(ports_config, method):
+    """
+    生成 Outline SS Server 配置
+    
+    Args:
+        ports_config: [(port, password), ...]
+        method: 加密方式
+    
+    Returns:
+        YAML 配置字符串
+    """
+    services = []
+    for i, (port, password) in enumerate(ports_config):
+        service = f"""  - listeners:
+      - type: tcp
+        address: "[::]:{port}"
+      - type: udp
+        address: "[::]:{port}"
+    keys:
+        - id: user-{i}
+          cipher: {method}
+          secret: {password}"""
+        services.append(service)
+    
+    return "services:\n" + "\n".join(services)
+
+
+def generate_python_ss_config(ports_config, method):
+    """
+    生成 Python Shadowsocks 配置
+    
+    Args:
+        ports_config: [(port, password), ...]
+        method: 加密方式
+    
+    Returns:
+        JSON 配置字符串
+    """
+    port_password = {str(port): password for port, password in ports_config}
+    config = {
+        "server": "0.0.0.0",
+        "timeout": 300,
+        "method": method,
+        "port_password": port_password
+    }
+    return json.dumps(config, indent=2)
+
+
+def generate_user_data(ports_config, method, server_type="outline"):
+    """
+    生成完整的 User Data 脚本
+    
+    Args:
+        ports_config: [(port, password), ...]
+        method: 加密方式
+        server_type: "outline" 或 "python"
+    
+    Returns:
+        base64 编码的 User Data
+    """
+    if server_type == "outline":
+        ss_config = generate_outline_config(ports_config, method)
+        install_script = get_outline_install_script()
+    else:
+        ss_config = generate_python_ss_config(ports_config, method)
+        install_script = get_python_ss_install_script()
+    
+    script = f"""#!/bin/bash
+mkdir -p /data
+cd /data
+
+# 写入 Shadowsocks 配置
+cat > /data/ss_config.yml << 'SSCONFIGEOF'
+{ss_config}
+SSCONFIGEOF
+
+{install_script}
+"""
+    return base64.b64encode(script.encode()).decode()
+
+
+def get_outline_install_script():
+    """获取 Outline SS Server 安装脚本"""
+    return '''
+# 安装 Go 环境
+wget -q https://go.dev/dl/go1.23.4.linux-amd64.tar.gz
+rm -rf /usr/local/go && tar -C /usr/local -xzf go1.23.4.linux-amd64.tar.gz
+export PATH=$PATH:/usr/local/go/bin
+
+# 安装 Outline Server
+git clone -b v1.7.3 --depth=1 https://github.com/Jigsaw-Code/outline-ss-server.git
+cd outline-ss-server
+nohup go run ./cmd/outline-ss-server -config /data/ss_config.yml -metrics 0.0.0.0:9091 > /var/log/outline_ssserver.log 2>&1 &
+'''
+
+
+def get_python_ss_install_script():
+    """获取 Python Shadowsocks 安装脚本"""
+    return '''
+# 安装 Python Shadowsocks
+pip install shadowsocks
+mv /data/ss_config.yml /data/config.json
+nohup ssserver -c /data/config.json > /var/log/ssserver.log 2>&1 &
+'''
+
+
+def resolve_region(region_input, config):
+    """
+    解析区域输入（支持区域代码或名称）
+    
+    Args:
+        region_input: 区域代码(如 ap-northeast-1) 或名称(如 "东京")
+        config: 配置字典
+    
+    Returns:
+        区域代码 或 None
+    """
+    if not region_input:
+        return config.get('default_region', 'ap-northeast-1')
+    
+    # 直接匹配区域代码
+    if region_input in config['regions']:
+        return region_input
+    
+    # 模糊匹配名称
+    region_input_lower = region_input.lower()
+    for code, info in config['regions'].items():
+        if region_input_lower in info.get('name', '').lower():
+            return code
+        if region_input_lower in code:
+            return code
+    
+    return region_input  # 返回原值，让 AWS API 处理
+
+
+def cmd_run(args, config):
+    """创建并启动新实例"""
+    region = resolve_region(args.region, config)
+    region_info = config['regions'].get(region, {})
+    
+    # 获取端口配置
+    ports_config = parse_ports_config(args.ports)
+    if not ports_config:
+        defaults = config.get('defaults', {}).get('shadowsocks', {})
+        default_ports = defaults.get('default_ports', [{'port': 2333, 'password': 'change_me'}])
+        ports_config = [(p['port'], p['password']) for p in default_ports]
+        print(f"使用默认端口配置: {ports_config}")
+    
+    # 获取加密方式
+    method = args.method
+    if not method:
+        method = config.get('defaults', {}).get('shadowsocks', {}).get('default_method', 'chacha20-ietf-poly1305')
+    
+    # 获取实例类型
+    instance_type = args.instance_type
+    if not instance_type:
+        instance_type = region_info.get('default_instance_type', 't2.nano')
+    
+    # 生成 User Data
+    server_type = config.get('defaults', {}).get('shadowsocks', {}).get('server_type', 'outline')
+    user_data = generate_user_data(ports_config, method, server_type)
+    
+    # 构建命令
+    template_name = args.template or 'auto_ss'
+    key_name = region_info.get('key_name', region)
+    
+    cmd = f"aws ec2 run-instances --region {region} --launch-template LaunchTemplateName={template_name}"
+    cmd += f" --user-data '{user_data}'"
+    cmd += f" --instance-type {instance_type}"
+    if key_name:
+        cmd += f" --key-name '{key_name}'"
+    
+    if args.name:
+        # 添加标签
+        cmd += f" --tag-specifications 'ResourceType=instance,Tags=[{{Key=Name,Value={args.name}}}]'"
+    
+    print(f"区域: {region} ({region_info.get('name', '未知')})")
+    print(f"实例类型: {instance_type}")
+    print(f"端口配置: {ports_config}")
+    print(f"加密方式: {method}")
+    print(f"启动模板: {template_name}")
+    print()
+    
+    result = run_cmd(cmd)
+    print(result)
+
+
+def cmd_desc(args, config):
+    """描述现有实例"""
+    region = resolve_region(args.region, config)
+    
+    cmd = f"aws ec2 describe-instances --region {region}"
+    result = run_cmd(cmd)
+    
+    try:
+        data = json.loads(result)
+    except json.JSONDecodeError:
+        print(result)
+        return
+    
+    print(f"{'InstanceId':<22} {'State':<12} {'PublicIP':<18} {'Region':<20} {'Name'}")
+    print("-" * 100)
+    
+    for reservation in data.get("Reservations", []):
+        for instance in reservation.get("Instances", []):
+            instance_id = instance.get("InstanceId", "N/A")
+            state = instance.get("State", {}).get("Name", "N/A")
+            public_ip = instance.get("PublicIpAddress", "N/A")
+            
+            # 获取实例名称标签
+            name = ""
+            for tag in instance.get("Tags", []):
+                if tag.get("Key") == "Name":
+                    name = tag.get("Value", "")
+                    break
+            
+            print(f"{instance_id:<22} {state:<12} {public_ip:<18} {region:<20} {name}")
+
+
+def cmd_term(args, config):
+    """终止实例"""
+    if not args.instance_id:
+        print("错误: 请指定实例ID")
+        print("用法: awsl term <instance-id> [--region REGION]")
+        return
+    
+    region = resolve_region(args.region, config)
+    
+    print(f"正在终止实例: {args.instance_id}")
+    if not args.force:
+        confirm = input("确认终止? (y/N): ")
+        if confirm.lower() != 'y':
+            print("已取消")
+            return
+    
+    cmd = f"aws ec2 terminate-instances --region {region} --instance-ids {args.instance_id}"
+    result = run_cmd(cmd)
+    print(result)
+
+
+def cmd_regions(args, config):
+    """列出可用区域"""
+    print("可用区域列表:")
+    print("-" * 80)
+    print(f"{'区域代码':<20} {'名称':<15} {'默认实例类型':<15} {'说明'}")
+    print("-" * 80)
+    
+    for code, info in config['regions'].items():
+        name = info.get('name', '未知')
+        instance_type = info.get('default_instance_type', 't2.nano')
+        desc = info.get('description', '')
+        default_mark = " *" if code == config.get('default_region') else ""
+        print(f"{code:<20} {name:<15} {instance_type:<15} {desc}{default_mark}")
+    
+    print()
+    print("* = 默认区域")
+
+
+def cmd_config(args, config):
+    """显示当前配置"""
+    print("当前配置:")
+    print("=" * 50)
+    print("\n[默认区域]")
+    print(f"  {config.get('default_region', '未设置')}")
+    
+    print("\n[Shadowsocks 默认配置]")
+    ss_defaults = config.get('defaults', {}).get('shadowsocks', {})
+    print(f"  加密方式: {ss_defaults.get('default_method', '未设置')}")
+    print(f"  服务器类型: {ss_defaults.get('server_type', '未设置')}")
+    print(f"  默认端口:")
+    for p in ss_defaults.get('default_ports', []):
+        print(f"    - {p.get('port')}: {p.get('password')}")
+    
+    print("\n[AWS 默认配置]")
+    aws_defaults = config.get('defaults', {}).get('aws', {})
+    print(f"  实例类型: {aws_defaults.get('default_instance_type', '未设置')}")
+    print(f"  启动模板: {aws_defaults.get('default_template_name', '未设置')}")
+
+
+def cmd_template(args, config):
+    """管理启动模板"""
+    if args.template_action == 'create':
+        template_create(args, config)
+    elif args.template_action == 'delete':
+        template_delete(args, config)
+    elif args.template_action == 'list':
+        template_list(args, config)
+    else:
+        print("用法: awsl template [create|delete|list]")
+
+
+def template_create(args, config):
+    """创建启动模板"""
+    region = resolve_region(args.region, config)
+    region_info = config['regions'].get(region, {})
+    
+    template_name = args.name or 'auto_ss'
+    ami_id = args.ami_id or region_info.get('ami_id')
+    
+    if not ami_id:
+        print(f"错误: 区域 {region} 没有配置 AMI ID，请使用 --ami-id 指定")
+        return
+    
+    print(f"创建启动模板: {template_name}")
+    print(f"区域: {region}")
+    print(f"AMI ID: {ami_id}")
+    
+    # 调用模板创建脚本
+    template_script = SCRIPT_DIR.parent / "launch_template" / "init_template.sh"
+    if template_script.exists():
+        cmd = f"cd {template_script.parent} && ./init_template.sh --region {region} --name {template_name} --ami-id {ami_id}"
+        result = run_cmd(cmd)
+        print(result)
+    else:
+        print("警告: 模板创建脚本不存在，请手动创建启动模板")
+
+
+def template_delete(args, config):
+    """删除启动模板"""
+    region = resolve_region(args.region, config)
+    template_name = args.name or 'auto_ss'
+    
+    cmd = f"aws ec2 delete-launch-template --region {region} --launch-template-name {template_name}"
+    result = run_cmd(cmd)
+    print(result)
+
+
+def template_list(args, config):
+    """列出启动模板"""
+    region = resolve_region(args.region, config)
+    
+    cmd = f"aws ec2 describe-launch-templates --region {region}"
+    result = run_cmd(cmd)
+    
+    try:
+        data = json.loads(result)
+        print(f"{'模板名称':<30} {'模板ID':<25} {'创建时间'}")
+        print("-" * 80)
+        for template in data.get('LaunchTemplates', []):
+            name = template.get('LaunchTemplateName', 'N/A')
+            template_id = template.get('LaunchTemplateId', 'N/A')
+            create_time = template.get('CreateTime', 'N/A')
+            print(f"{name:<30} {template_id:<25} {create_time}")
+    except json.JSONDecodeError:
+        print(result)
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='AWS EC2 Shadowsocks 实例管理工具',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+示例:
+  awsl run -r tokyo -p 2333:mypass -m chacha20-ietf-poly1305
+  awsl desc -r ap-northeast-1
+  awsl term i-0abc123def456
+  awsl regions
+        """
+    )
+    
+    subparsers = parser.add_subparsers(dest='command', help='子命令')
+    
+    # run 命令
+    run_parser = subparsers.add_parser('run', help='创建并启动新实例')
+    run_parser.add_argument('-r', '--region', help='区域代码或名称')
+    run_parser.add_argument('-p', '--ports', help='端口配置 (格式: port:pass,port:pass)')
+    run_parser.add_argument('-m', '--method', help='加密方式')
+    run_parser.add_argument('-t', '--instance-type', help='实例类型')
+    run_parser.add_argument('-T', '--template', help='启动模板名称')
+    run_parser.add_argument('-n', '--name', help='实例名称')
+    
+    # desc 命令
+    desc_parser = subparsers.add_parser('desc', help='描述现有实例')
+    desc_parser.add_argument('-r', '--region', help='区域代码或名称')
+    
+    # term 命令
+    term_parser = subparsers.add_parser('term', help='终止实例')
+    term_parser.add_argument('instance_id', nargs='?', help='实例ID')
+    term_parser.add_argument('-r', '--region', help='区域代码或名称')
+    term_parser.add_argument('-f', '--force', action='store_true', help='强制终止，不确认')
+    
+    # regions 命令
+    subparsers.add_parser('regions', help='列出可用区域')
+    
+    # config 命令
+    subparsers.add_parser('config', help='显示当前配置')
+    
+    # template 命令
+    template_parser = subparsers.add_parser('template', help='管理启动模板')
+    template_parser.add_argument('template_action', choices=['create', 'delete', 'list'],
+                                  help='模板操作: create/delete/list')
+    template_parser.add_argument('-r', '--region', help='区域')
+    template_parser.add_argument('-n', '--name', help='模板名称')
+    template_parser.add_argument('--ami-id', help='AMI ID')
+    
+    args = parser.parse_args()
+    
+    # 加载配置
+    config = load_config()
+    
+    # 执行命令
+    if args.command == 'run':
+        cmd_run(args, config)
+    elif args.command == 'desc':
+        cmd_desc(args, config)
+    elif args.command == 'term':
+        cmd_term(args, config)
+    elif args.command == 'regions':
+        cmd_regions(args, config)
+    elif args.command == 'config':
+        cmd_config(args, config)
+    elif args.command == 'template':
+        cmd_template(args, config)
+    else:
+        parser.print_help()
+
+
+if __name__ == "__main__":
+    main()
