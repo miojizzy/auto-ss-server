@@ -41,7 +41,7 @@ x-sync-template: &sync-template
 
           echo "已添加[sync]前缀到commit message"
 
-          git remote add github https://$GITHUB_TOKEN@$GITHUB_REPO || git remote set-url github https://$GITHUB_TOKEN@$GITHUB_REPO
+          git remote add github https://$GITHUB_TOKEN@$GITHUB_REPO_AUTO_SS_SERVER || git remote set-url github https://$GITHUB_TOKEN@$GITHUB_REPO_AUTO_SS_SERVER
           git push github $(git rev-parse --abbrev-ref HEAD) --force
 
           echo "✅ 已成功同步到GitHub"
