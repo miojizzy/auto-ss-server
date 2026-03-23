@@ -1,0 +1,50 @@
+name: Sync to CNB
+
+on:
+  push:
+    branches: [develop, main, master]
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check sync prefix
+        run: |
+          # 获取最新commit的msg
+          LATEST_MSG=$(git log -1 --pretty=%B)
+          echo "Latest commit message: $LATEST_MSG"
+
+          # 检查是否是"[sync]"前缀，如果是则直接结束
+          if [[ "$LATEST_MSG" == "[sync]"* ]]; then
+            echo "检测到[sync]前缀，这是来自其他平台的同步提交，跳过本次同步"
+            echo "SKIP_SYNC=true" >> $GITHUB_ENV
+          else
+            echo "正常提交，准备同步到CNB"
+            echo "SKIP_SYNC=false" >> $GITHUB_ENV
+          fi
+
+      - name: Add sync prefix and push to CNB
+        if: env.SKIP_SYNC != 'true'
+        run: |
+          # 获取最新commit的msg
+          LATEST_MSG=$(git log -1 --pretty=%B)
+
+          git config --global user.email "gh-sync@bot.com"
+          git config --global user.name "gh-sync bot"
+
+          # 修改最新commit的msg，添加[sync]前缀
+          GIT_COMMITTER_DATE="$(git log -1 --format=%ci)" \
+          git commit --amend -m "[sync] $LATEST_MSG" --no-edit
+
+          echo "已添加[sync]前缀到commit message"
+
+          # 推送到CNB
+          git remote add cnb https://cnb:${{ secrets.CNB_TOKEN }}@${{ secrets.CNB_REPO }}
+          git push cnb $(git rev-parse --abbrev-ref HEAD) --force
+
+          echo "✅ 已成功同步到CNB"

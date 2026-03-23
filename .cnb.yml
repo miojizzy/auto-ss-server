@@ -1,0 +1,58 @@
+$:
+  vscode:
+    - docker:
+        build: .ide/Dockerfile
+      services:
+        - vscode
+        - docker
+      # 开发环境启动后会执行的任务
+      stages:
+        - name: setup env
+          script: chown -R codespace:codespace /workspace && su codespace
+        - name: say hi
+          script: echo "hi"
+
+# 同步配置模板：检测 [sync] 前缀避免循环触发
+x-sync-template: &sync-template
+  - imports:
+      - https://cnb.cool/miojizzy/secrets/-/blob/main/github-secrets.yml
+    stages:
+      - name: check sync prefix
+        script: |
+          LATEST_MSG=$(git log -1 --pretty=%B)
+          echo "Latest commit message: $LATEST_MSG"
+
+          if [[ "$LATEST_MSG" == "[sync]"* ]]; then
+            echo "检测到[sync]前缀，这是来自其他平台的同步提交，跳过本次同步"
+            exit 78
+          fi
+
+          echo "正常提交，准备同步到GitHub"
+
+      - name: add sync prefix and push to github
+        script: |
+          LATEST_MSG=$(git log -1 --pretty=%B)
+
+          git config --global user.email "cnb-sync@bot.com"
+          git config --global user.name "cnb-sync bot"
+
+          GIT_COMMITTER_DATE="$(git log -1 --format=%ci)" \
+          git commit --amend -m "[sync] $LATEST_MSG" --no-edit
+
+          echo "已添加[sync]前缀到commit message"
+
+          git remote add github https://$GITHUB_TOKEN@$GITHUB_REPO || git remote set-url github https://$GITHUB_TOKEN@$GITHUB_REPO
+          git push github $(git rev-parse --abbrev-ref HEAD) --force
+
+          echo "✅ 已成功同步到GitHub"
+
+# 各分支同步配置
+develop:
+  push: *sync-template
+
+main:
+  push: *sync-template
+
+master:
+  push: *sync-template
+        
