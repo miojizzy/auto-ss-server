@@ -192,6 +192,12 @@ def generate_python_ss_config(ports_config, method):
     return json.dumps(config, indent=2)
 
 
+OUTLINE_INSTALL_SCRIPT_URL = (
+    "https://raw.githubusercontent.com/miojizzy/auto-ss-server/main"
+    "/src/ssserver/install_outline.sh"
+)
+
+
 def generate_user_data(ports_config, method, server_type="outline"):
     """
     生成完整的 User Data 脚本
@@ -205,13 +211,14 @@ def generate_user_data(ports_config, method, server_type="outline"):
         base64 编码的 User Data
     """
     if server_type == "outline":
-        ss_config = generate_outline_config(ports_config, method)
-        install_script = get_outline_install_script()
+        install_script = get_outline_install_script(ports_config, method)
+        script = f"""#!/bin/bash
+{install_script}
+"""
     else:
         ss_config = generate_python_ss_config(ports_config, method)
         install_script = get_python_ss_install_script()
-    
-    script = f"""#!/bin/bash
+        script = f"""#!/bin/bash
 mkdir -p /data
 cd /data
 
@@ -225,19 +232,15 @@ SSCONFIGEOF
     return base64.b64encode(script.encode()).decode()
 
 
-def get_outline_install_script():
-    """获取 Outline SS Server 安装脚本"""
-    return '''
-# 安装 Go 环境
-wget -q https://go.dev/dl/go1.23.4.linux-amd64.tar.gz
-rm -rf /usr/local/go && tar -C /usr/local -xzf go1.23.4.linux-amd64.tar.gz
-export PATH=$PATH:/usr/local/go/bin
-
-# 安装 Outline Server
-git clone -b v1.7.3 --depth=1 https://github.com/Jigsaw-Code/outline-ss-server.git
-cd outline-ss-server
-nohup go run ./cmd/outline-ss-server -config /data/ss_config.yml -metrics 0.0.0.0:9091 > /var/log/outline_ssserver.log 2>&1 &
-'''
+def get_outline_install_script(ports_config, method):
+    """生成通过 curl|bash 安装 Outline SS Server 的命令"""
+    port_args = " ".join(
+        f"-p {port}:{password}" for port, password in ports_config
+    )
+    return (
+        f"curl -fsSL '{OUTLINE_INSTALL_SCRIPT_URL}'"
+        f" | bash -s -- {port_args} -m {method}"
+    )
 
 
 def get_python_ss_install_script():

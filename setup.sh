@@ -159,9 +159,18 @@ install_ssserver() {
     log_step "安装 Shadowsocks 服务器..."
     
     local server_type="${1:-outline}"
+    shift || true
     
-    cd "${SCRIPT_DIR}/src/ssserver"
-    ./init_instance.sh "$server_type"
+    case "$server_type" in
+        outline|Outline)
+            log_info "使用 install_outline.sh 安装 Outline SS Server..."
+            "${SCRIPT_DIR}/src/ssserver/install_outline.sh" "$@"
+            ;;
+        *)
+            log_error "不支持的服务类型: $server_type（旧版脚本已移至 src/ssserver/legacy/）"
+            exit 1
+            ;;
+    esac
     
     log_info "Shadowsocks 服务器安装完成"
 }
