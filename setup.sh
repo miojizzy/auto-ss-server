@@ -39,19 +39,25 @@ show_help() {
   aws             安装 AWS CLI
   awsl            安装 awsl 工具
   template        创建启动模板
-  ssserver        在当前机器安装 Shadowsocks 服务器
+  ssserver        在当前机器安装 Shadowsocks 服务器 (默认: outline)
   all             安装所有组件
 
 选项:
   -r, --region    指定区域 (用于 template 命令)
   -h, --help      显示帮助
 
+awsl run 额外选项:
+  -s, --server-type   服务器类型: outline (默认) 或 python
+
 示例:
   $0 aws                          # 安装 AWS CLI
   $0 awsl                         # 安装 awsl 管理工具
   $0 template -r ap-northeast-1   # 在东京区域创建启动模板
-  $0 ssserver                     # 安装 Shadowsocks 服务器
+  $0 ssserver                     # 安装 Outline Shadowsocks 服务器 (默认)
+  $0 ssserver python              # 安装 Python Shadowsocks 服务器
   $0 all                          # 安装所有组件
+  awsl run -r ap-northeast-1 -p 2333:yourpassword              # 使用默认 outline
+  awsl run -r ap-northeast-1 -p 2333:yourpassword -s python    # 使用 python
 
 快速开始:
   $0 awsl
@@ -152,8 +158,10 @@ create_template() {
 install_ssserver() {
     log_step "安装 Shadowsocks 服务器..."
     
+    local server_type="${1:-outline}"
+    
     cd "${SCRIPT_DIR}/src/ssserver"
-    ./init_instance.sh outline
+    ./init_instance.sh "$server_type"
     
     log_info "Shadowsocks 服务器安装完成"
 }
@@ -189,7 +197,7 @@ main() {
             create_template "$@"
             ;;
         ssserver|si|osi)
-            install_ssserver
+            install_ssserver "$@"
             ;;
         all)
             install_all

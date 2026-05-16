@@ -303,7 +303,8 @@ def cmd_run(args, config):
         instance_type = region_info.get('default_instance_type', 't2.nano')
     
     # 生成 User Data
-    server_type = config.get('defaults', {}).get('shadowsocks', {}).get('server_type', 'outline')
+    server_type = getattr(args, 'server_type', None) or \
+        config.get('defaults', {}).get('shadowsocks', {}).get('server_type', 'outline')
     user_data = generate_user_data(ports_config, method, server_type)
     
     # 构建命令
@@ -324,6 +325,7 @@ def cmd_run(args, config):
     print(f"实例类型: {instance_type}")
     print(f"端口配置: {ports_config}")
     print(f"加密方式: {method}")
+    print(f"服务器类型: {server_type}")
     print(f"启动模板: {template_name}")
     print()
     
@@ -514,6 +516,9 @@ def main():
     run_parser.add_argument('-t', '--instance-type', help='实例类型')
     run_parser.add_argument('-T', '--template', help='启动模板名称')
     run_parser.add_argument('-n', '--name', help='实例名称')
+    run_parser.add_argument('-s', '--server-type', dest='server_type',
+                            choices=['outline', 'python'], default=None,
+                            help='Shadowsocks 服务器类型 (默认: outline)')
     
     # desc 命令
     desc_parser = subparsers.add_parser('desc', help='描述现有实例')
