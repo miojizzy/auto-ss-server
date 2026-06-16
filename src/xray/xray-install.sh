@@ -2,9 +2,15 @@
 
 # Xray VLESS 服务器安装脚本（自签证书+IP方式）
 # Ubuntu 26 ARM版本
-# 使用方法: bash xray-install.sh
+# 使用方法:
+#   bash xray-install.sh
+#   curl -fsSL https://example.com/xray-install.sh | bash
+#   wget -O - https://example.com/xray-install.sh | bash
 
-set -e
+set -euo pipefail
+
+# 获取脚本所在目录（支持 curl | bash 方式）
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # 颜色定义
 RED='\033[0;31m'
@@ -32,12 +38,66 @@ print_info() {
     echo -e "${YELLOW}ℹ $1${NC}"
 }
 
+# ============ 网络诊断函数 ============
+check_network() {
+    print_info "检查网络连接..."
+
+    # 测试 DNS 解析
+    if ! ping -c 1 -W 2 8.8.8.8 >/dev/null 2>&1; then
+        print_info "无法连接到 8.8.8.8，尝试其他 DNS..."
+        if ! ping -c 1 -W 2 1.1.1.1 >/dev/null 2>&1; then
+            print_error "网络连接失败，请检查网络设置"
+            return 1
+        fi
+    fi
+
+    # 测试 GitHub 连接
+    if ! curl -s --connect-timeout 5 https://github.com >/dev/null 2>&1; then
+        print_error "无法连接到 GitHub，请检查："
+        echo "  1. 网络连接是否正常"
+        echo "  2. 是否需要配置代理"
+        echo "  3. DNS 是否可用"
+        return 1
+    fi
+
+    print_success "网络连接正常"
+    return 0
+}
+
+# ============ 代理配置函数 ============
+setup_proxy() {
+    if [ -n "${HTTP_PROXY:-}" ] || [ -n "${HTTPS_PROXY:-}" ]; then
+        print_info "检测到代理设置"
+        print_info "HTTP_PROXY: ${HTTP_PROXY:-未设置}"
+        print_info "HTTPS_PROXY: ${HTTPS_PROXY:-未设置}"
+    fi
+}
+
+# ============ 清理函数 ============
+cleanup() {
+    local exit_code=$?
+    if [ $exit_code -ne 0 ]; then
+        print_error "安装失败 (退出码: $exit_code)"
+        print_info "请查看上面的错误信息"
+    fi
+    return $exit_code
+}
+
+trap cleanup EXIT
+
 # 检查是否为root
 if [[ $EUID -ne 0 ]]; then
     print_error "此脚本必须以root身份运行"
-    echo "请使用: sudo bash xray-install.sh"
+    echo "请使用: sudo -i bash xray-install.sh"
+    echo "或者: curl -fsSL https://example.com/xray-install.sh | sudo bash"
     exit 1
 fi
+
+# ============ 阶段0: 网络环境检查 ============
+print_step "0" "网络环境检查"
+
+setup_proxy
+check_network
 
 # ============ 阶段1: 系统准备 ============
 print_step "1" "系统准备和依赖安装"
