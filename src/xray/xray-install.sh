@@ -9,9 +9,6 @@
 
 set -euo pipefail
 
-# 获取脚本所在目录（支持 curl | bash 方式）
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
 # 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
