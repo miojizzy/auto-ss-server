@@ -43,11 +43,14 @@ fi
 print_step "1" "系统准备和依赖安装"
 
 print_info "更新系统包列表..."
-apt-get update -qq
+apt-get update
 print_success "系统包列表已更新"
 
 print_info "安装必要的依赖..."
-apt-get install -y -qq curl wget unzip uuid-runtime openssl >/dev/null 2>&1
+if ! apt-get install -y curl wget unzip uuid-runtime openssl; then
+    print_error "依赖安装失败"
+    exit 1
+fi
 print_success "依赖安装完成"
 
 # ============ 阶段2: 安装Xray核心 ============
@@ -64,7 +67,7 @@ XRAY_VERSION="1.8.4"
 XRAY_URL="https://github.com/XYXONLINE/Xray-core/releases/download/v${XRAY_VERSION}/Xray-linux-arm64.zip"
 
 # 尝试下载
-if wget -q "$XRAY_URL" -O xray.zip; then
+if wget -v "$XRAY_URL" -O xray.zip 2>&1; then
     print_success "Xray核心下载成功"
 else
     print_error "下载失败，请检查网络连接"
@@ -72,7 +75,10 @@ else
 fi
 
 print_info "解压Xray..."
-unzip -q xray.zip
+if ! unzip xray.zip; then
+    print_error "解压失败"
+    exit 1
+fi
 rm -f xray.zip
 
 print_info "安装Xray到系统目录..."
@@ -104,14 +110,14 @@ fi
 print_step "5" "生成自签证书"
 
 print_info "生成RSA私钥（2048位）..."
-openssl genrsa -out /etc/xray/server.key 2048 2>/dev/null
+openssl genrsa -out /etc/xray/server.key 2048
 print_success "私钥生成完成"
 
 print_info "生成自签证书（有效期365天）..."
 openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
     -keyout /etc/xray/server.key \
     -out /etc/xray/server.crt \
-    -subj "/CN=$SERVER_IP" 2>/dev/null
+    -subj "/CN=$SERVER_IP"
 print_success "自签证书生成完成"
 
 print_info "设置证书文件权限..."
@@ -175,7 +181,7 @@ print_success "配置文件创建完成"
 print_step "7" "验证配置文件"
 
 print_info "检查配置文件语法..."
-if /usr/local/Xray/xray -c /etc/xray/config.json -test > /dev/null 2>&1; then
+if /usr/local/Xray/xray -c /etc/xray/config.json -test; then
     print_success "配置文件验证通过"
 else
     print_error "配置文件验证失败"
