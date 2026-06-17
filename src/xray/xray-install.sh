@@ -120,8 +120,9 @@ mkdir -p /var/log/xray
 
 print_info "下载Xray核心（ARM64版本）..."
 cd /tmp
-XRAY_VERSION="1.8.4"
-XRAY_URL="https://github.com/XYXONLINE/Xray-core/releases/download/v${XRAY_VERSION}/Xray-linux-arm64.zip"
+XRAY_VERSION=$(curl -s "https://api.github.com/repos/XTLS/Xray-core/releases/latest" | grep '"tag_name"' | cut -d'"' -f4)
+print_info "最新版本: ${XRAY_VERSION}"
+XRAY_URL="https://github.com/XTLS/Xray-core/releases/download/${XRAY_VERSION}/Xray-linux-arm64-v8a.zip"
 
 # 尝试下载
 if wget -v "$XRAY_URL" -O xray.zip 2>&1; then
