@@ -3,9 +3,11 @@
 # Xray VLESS 服务器安装脚本（自签证书+IP方式）
 # Ubuntu 26 ARM版本
 # 使用方法:
-#   bash xray-install.sh
+#   bash xray-install.sh [端口号]
 #   curl -fsSL https://example.com/xray-install.sh | bash
+#   curl -fsSL https://example.com/xray-install.sh | bash -s 8443
 #   wget -O - https://example.com/xray-install.sh | bash
+#   XRAY_PORT=8443 bash xray-install.sh
 
 set -euo pipefail
 
@@ -144,15 +146,29 @@ mv xray /usr/local/Xray/
 chmod +x /usr/local/Xray/xray
 print_success "Xray核心安装完成"
 
-# ============ 阶段3: 生成UUID ============
-print_step "3" "生成UUID"
+# ============ 阶段3: 配置端口 ============
+print_step "3" "配置Xray端口"
+
+# 从环境变量或参数获取端口，默认443
+XRAY_PORT="${XRAY_PORT:-${1:-443}}"
+
+# 验证端口号
+if ! [[ "$XRAY_PORT" =~ ^[0-9]+$ ]] || [ "$XRAY_PORT" -lt 1 ] || [ "$XRAY_PORT" -gt 65535 ]; then
+    print_error "无效的端口号: $XRAY_PORT"
+    exit 1
+fi
+
+print_success "使用端口: ${YELLOW}$XRAY_PORT${NC}"
+
+# ============ 阶段4: 生成UUID ============
+print_step "4" "生成UUID"
 
 print_info "生成随机UUID..."
 XRAY_UUID=$(uuidgen)
 print_success "生成的UUID: ${YELLOW}$XRAY_UUID${NC}"
 
-# ============ 阶段4: 获取服务器IP ============
-print_step "4" "获取服务器IP地址"
+# ============ 阶段5: 获取服务器IP ============
+print_step "5" "获取服务器IP地址"
 
 print_info "检测服务器IP地址..."
 # 优先使用内网IP，如果获取失败则使用localhost
@@ -197,7 +213,7 @@ cat > /etc/xray/config.json <<EOF
   },
   "inbounds": [
     {
-      "port": 443,
+      "port": $XRAY_PORT,
       "protocol": "vless",
       "settings": {
         "clients": [
@@ -301,8 +317,8 @@ print_step "10" "防火墙配置"
 print_info "检查ufw防火墙状态..."
 if systemctl is-active --quiet ufw; then
     print_info "UFW已启用，添加规则..."
-    ufw allow 443/tcp > /dev/null 2>&1
-    ufw allow 443/udp > /dev/null 2>&1
+    ufw allow "$XRAY_PORT"/tcp > /dev/null 2>&1
+    ufw allow "$XRAY_PORT"/udp > /dev/null 2>&1
     print_success "防火墙规则已添加"
 else
     print_info "UFW未启用（跳过）"
@@ -318,7 +334,7 @@ echo -e "${GREEN}═════════════════════
 echo ""
 echo -e "  ${BLUE}协议:${NC} VLESS"
 echo -e "  ${BLUE}地址:${NC} $SERVER_IP"
-echo -e "  ${BLUE}端口:${NC} 443"
+echo -e "  ${BLUE}端口:${NC} $XRAY_PORT"
 echo -e "  ${BLUE}UUID:${NC} $XRAY_UUID"
 echo -e "  ${BLUE}传输:${NC} TCP"
 echo -e "  ${BLUE}安全:${NC} TLS"
@@ -329,7 +345,7 @@ echo -e "${GREEN}═════════════════════
 echo -e "${YELLOW}VLESS分享链接${NC}"
 echo -e "${GREEN}═══════════════════════════════════════════════════════${NC}"
 echo ""
-echo "vless://$XRAY_UUID@$SERVER_IP:443?security=tls&flow=xtls-rprx-vision&type=tcp&allowInsecure=1"
+echo "vless://$XRAY_UUID@$SERVER_IP:$XRAY_PORT?security=tls&flow=xtls-rprx-vision&type=tcp&allowInsecure=1"
 echo ""
 echo -e "${GREEN}═══════════════════════════════════════════════════════${NC}"
 echo ""
