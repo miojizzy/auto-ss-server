@@ -135,7 +135,7 @@ else
 fi
 
 print_info "解压Xray..."
-if ! unzip xray.zip; then
+if ! unzip -o xray.zip; then
     print_error "解压失败"
     exit 1
 fi
@@ -154,7 +154,7 @@ XRAY_PORT="${XRAY_PORT:-${1:-443}}"
 
 # 验证端口号
 if ! [[ "$XRAY_PORT" =~ ^[0-9]+$ ]] || [ "$XRAY_PORT" -lt 1 ] || [ "$XRAY_PORT" -gt 65535 ]; then
-    print_error "无效的端口号: $XRAY_PORT"
+    print_error "无效的端口号: $XRAY_PORT (有效范围: 1-65535)"
     exit 1
 fi
 
