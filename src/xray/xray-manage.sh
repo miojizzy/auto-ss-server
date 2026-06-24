@@ -119,28 +119,31 @@ show_info() {
     echo -e "${YELLOW}服务器信息${NC}"
     echo -e "${BLUE}═════════════════════════════════════${NC}"
 
-    # 获取UUID
-    UUID=$(grep -o '"id": "[^"]*"' "$XRAY_CONFIG" | head -1 | cut -d'"' -f4)
+    local REALITY_ENV="/etc/xray/reality.env"
+    if [ ! -f "$REALITY_ENV" ]; then
+        echo -e "${RED}未检测到 REALITY 配置: $REALITY_ENV${NC}"
+        echo "请先运行安装脚本 (xray-install.sh)"
+        return 1
+    fi
 
-    # 获取公网IP
-    IP=$(curl -s --max-time 5 https://api.ipify.org 2>/dev/null \
-        || curl -s --max-time 5 https://ifconfig.me 2>/dev/null \
-        || curl -s --max-time 5 https://icanhazip.com 2>/dev/null \
-        || hostname -I | awk '{print $1}')
-    IP=$(echo "$IP" | tr -d '[:space:]')
+    # shellcheck disable=SC1090
+    source "$REALITY_ENV"
 
     echo ""
     echo -e "  ${BLUE}Xray版本:${NC} $(/usr/local/Xray/xray -version | head -1)"
-    echo -e "  ${BLUE}服务器IP:${NC} $IP"
-    echo -e "  ${BLUE}监听端口:${NC} 443"
+    echo -e "  ${BLUE}服务器IP:${NC} $SERVER_IP"
+    echo -e "  ${BLUE}监听端口:${NC} $XRAY_PORT"
     echo -e "  ${BLUE}协议:${NC} VLESS"
-    echo -e "  ${BLUE}UUID:${NC} $UUID"
+    echo -e "  ${BLUE}UUID:${NC} $XRAY_UUID"
     echo -e "  ${BLUE}流控:${NC} xtls-rprx-vision"
-    echo -e "  ${BLUE}TLS:${NC} 自签证书"
+    echo -e "  ${BLUE}安全:${NC} REALITY"
+    echo -e "  ${BLUE}SNI:${NC} $SERVER_NAME"
+    echo -e "  ${BLUE}公钥(pbk):${NC} $PUBLIC_KEY"
+    echo -e "  ${BLUE}shortId(sid):${NC} $SHORT_ID"
     echo ""
 
     echo -e "${YELLOW}VLESS分享链接:${NC}"
-    echo "vless://$UUID@$IP:443?security=tls&flow=xtls-rprx-vision&type=tcp&allowInsecure=1"
+    echo "vless://$XRAY_UUID@$SERVER_IP:$XRAY_PORT?security=reality&encryption=none&pbk=$PUBLIC_KEY&sid=$SHORT_ID&sni=$SERVER_NAME&fp=chrome&flow=xtls-rprx-vision&type=tcp#xray-reality"
     echo ""
 }
 
