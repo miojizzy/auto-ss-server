@@ -122,8 +122,12 @@ show_info() {
     # 获取UUID
     UUID=$(grep -o '"id": "[^"]*"' "$XRAY_CONFIG" | head -1 | cut -d'"' -f4)
 
-    # 获取IP
-    IP=$(hostname -I | awk '{print $1}')
+    # 获取公网IP
+    IP=$(curl -s --max-time 5 https://api.ipify.org 2>/dev/null \
+        || curl -s --max-time 5 https://ifconfig.me 2>/dev/null \
+        || curl -s --max-time 5 https://icanhazip.com 2>/dev/null \
+        || hostname -I | awk '{print $1}')
+    IP=$(echo "$IP" | tr -d '[:space:]')
 
     echo ""
     echo -e "  ${BLUE}Xray版本:${NC} $(/usr/local/Xray/xray -version | head -1)"

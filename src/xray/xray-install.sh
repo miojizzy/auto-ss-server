@@ -170,14 +170,17 @@ print_success "生成的UUID: ${YELLOW}$XRAY_UUID${NC}"
 # ============ 阶段5: 获取服务器IP ============
 print_step "5" "获取服务器IP地址"
 
-print_info "检测服务器IP地址..."
-# 优先使用内网IP，如果获取失败则使用localhost
-SERVER_IP=$(hostname -I | awk '{print $1}')
+print_info "检测服务器公网IP地址..."
+SERVER_IP=$(curl -s --max-time 5 https://api.ipify.org 2>/dev/null \
+    || curl -s --max-time 5 https://ifconfig.me 2>/dev/null \
+    || curl -s --max-time 5 https://icanhazip.com 2>/dev/null \
+    || hostname -I | awk '{print $1}')
+SERVER_IP=$(echo "$SERVER_IP" | tr -d '[:space:]')
 if [ -z "$SERVER_IP" ]; then
     SERVER_IP="127.0.0.1"
     print_info "未检测到IP，使用localhost（请手动修改为实际IP）"
 else
-    print_success "检测到服务器IP: ${YELLOW}$SERVER_IP${NC}"
+    print_success "检测到服务器公网IP: ${YELLOW}$SERVER_IP${NC}"
 fi
 
 # ============ 阶段5: 生成自签证书 ============

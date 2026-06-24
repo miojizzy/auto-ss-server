@@ -101,6 +101,28 @@ sudo systemctl start xray
 sudo cat /etc/xray/config.json
 ```
 
+## 卸载
+
+在已安装的机器上运行卸载脚本，会停止服务并删除程序、配置、日志及防火墙规则：
+
+```bash
+# 交互式确认后卸载
+sudo bash src/xray/xray-uninstall.sh
+
+# 跳过确认直接卸载
+sudo bash src/xray/xray-uninstall.sh -y
+```
+
+卸载内容：
+
+- systemd 服务：`/etc/systemd/system/xray.service`
+- 程序目录：`/usr/local/Xray`
+- 配置目录：`/etc/xray`
+- 日志目录：`/var/log/xray`
+- 相关防火墙规则（如使用 UFW）
+
+> 安装时装的依赖（`curl wget unzip uuid-runtime openssl`）为系统常用工具，不会被删除。
+
 ## 环境变量
 
 ```bash

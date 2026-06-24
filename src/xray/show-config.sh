@@ -36,7 +36,11 @@ fi
 # 提取连接信息
 XRAY_PORT=$(grep -oP '"port":\s*\K\d+' "$CONFIG_FILE" | head -1)
 XRAY_UUID=$(grep -oP '"id":\s*"\K[^"]+' "$CONFIG_FILE" | head -1)
-SERVER_IP=$(hostname -I | awk '{print $1}')
+SERVER_IP=$(curl -s --max-time 5 https://api.ipify.org 2>/dev/null \
+    || curl -s --max-time 5 https://ifconfig.me 2>/dev/null \
+    || curl -s --max-time 5 https://icanhazip.com 2>/dev/null \
+    || hostname -I | awk '{print $1}')
+SERVER_IP=$(echo "$SERVER_IP" | tr -d '[:space:]')
 
 if [ -z "$XRAY_PORT" ] || [ -z "$XRAY_UUID" ] || [ -z "$SERVER_IP" ]; then
     print_error "无法提取连接信息"
