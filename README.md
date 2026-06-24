@@ -134,6 +134,38 @@ awsl term i-0abc123def456
 - `aes-128-gcm`
 - `aes-256-cfb`
 
+## Xray VLESS 服务
+
+在单台服务器上一键部署/卸载 Xray VLESS（自签证书 + IP 方式），与上面的 AWS 自动化相互独立。
+
+### 一键安装
+
+```bash
+# 默认端口 443
+curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/xray/xray-install.sh | sudo bash
+
+# 自定义端口（如 8443）
+curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/xray/xray-install.sh | sudo bash -s 8443
+
+# 使用本地脚本
+sudo bash src/xray/xray-install.sh 8443
+```
+
+### 一键卸载
+
+```bash
+# 交互式确认后卸载
+curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/xray/xray-uninstall.sh | sudo bash
+
+# 跳过确认直接卸载
+curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/xray/xray-uninstall.sh | sudo bash -s -- -y
+
+# 使用本地脚本
+sudo bash src/xray/xray-uninstall.sh -y
+```
+
+详细说明见 [XRAY_INSTALL.md](XRAY_INSTALL.md)。
+
 ## 定时任务
 
 配置 IP 自动检测和切换：
