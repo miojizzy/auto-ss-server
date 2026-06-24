@@ -164,6 +164,15 @@ curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/xr
 sudo bash src/xray/xray-uninstall.sh -y
 ```
 
+### Linux 一键客户端
+
+在客户端 Linux 机器上安装（解析分享链接，本地 SOCKS5 1080）：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/xray/xray-client-install.sh \
+  | sudo bash -s -- "vless://..."
+```
+
 详细说明见 [XRAY_INSTALL.md](XRAY_INSTALL.md)。
 
 ## 定时任务

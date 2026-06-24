@@ -123,58 +123,34 @@ vless = server_ip:port, method=none, password=uuid, obfs=off, tls13=1, tag=Xray
 
 ### 5. Linux 用户
 
-#### 手动配置
-编辑 `/etc/xray/client-config.json`：
+#### 一键安装（REALITY，推荐）
 
-```json
-{
-  "log": {
-    "loglevel": "info"
-  },
-  "inbounds": [
-    {
-      "port": 1080,
-      "protocol": "socks",
-      "sniffing": {
-        "enabled": true,
-        "destOverride": ["http", "tls"]
-      }
-    }
-  ],
-  "outbounds": [
-    {
-      "protocol": "vless",
-      "settings": {
-        "vnext": [
-          {
-            "address": "your_server_ip",
-            "port": your_port,
-            "users": [
-              {
-                "id": "your_uuid",
-                "encryption": "none",
-                "flow": "xtls-rprx-vision"
-              }
-            ]
-          }
-        ]
-      },
-      "streamSettings": {
-        "network": "tcp",
-        "security": "tls",
-        "tlsSettings": {
-          "serverName": "your_server_ip",
-          "allowInsecure": true
-        }
-      }
-    }
-  ]
-}
+在客户端 Linux 机器上执行（自动检测架构、装为 systemd 服务、本地 SOCKS5 1080）：
+
+```bash
+# 方式 A：参数传链接
+curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/xray/xray-client-install.sh \
+  | sudo bash -s -- "vless://uuid@ip:port?security=reality&pbk=...&sid=...&sni=...&flow=xtls-rprx-vision&type=tcp"
+
+# 方式 B：环境变量传链接
+curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/xray/xray-client-install.sh \
+  | sudo VLESS_LINK="vless://..." bash
 ```
 
-运行：
+链接从服务器 `sudo bash src/xray/show-config.sh` 获取。
+
+安装后本地 SOCKS5 代理在 `127.0.0.1:1080`，测试：
+
 ```bash
-xray -c client-config.json
+curl -x socks5h://127.0.0.1:1080 https://ipinfo.io/ip   # 应显示服务器 IP
+```
+
+管理 / 卸载：
+
+```bash
+sudo systemctl status xray-client
+sudo journalctl -u xray-client -f
+sudo bash xray-client-install.sh uninstall
 ```
 
 ## 分享链接导入
