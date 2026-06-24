@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Xray VLESS 服务器安装脚本（自签证书+IP方式）
+# Xray VLESS 服务器安装脚本（REALITY 协议，无需证书）
 # Ubuntu 26 ARM版本
 # 使用方法:
 #   bash xray-install.sh [端口号]
@@ -183,24 +183,29 @@ else
     print_success "检测到服务器公网IP: ${YELLOW}$SERVER_IP${NC}"
 fi
 
-# ============ 阶段5: 生成自签证书 ============
-print_step "5" "生成自签证书"
+# ============ 阶段5b: 生成 REALITY 密钥 ============
+print_step "5" "生成 REALITY 密钥"
 
-print_info "生成RSA私钥（2048位）..."
-openssl genrsa -out /etc/xray/server.key 2048
-print_success "私钥生成完成"
+# 伪装目标（借用真实大站的 TLS 指纹）
+REALITY_DEST="www.microsoft.com:443"
+REALITY_SERVER_NAME="www.microsoft.com"
 
-print_info "生成自签证书（有效期365天）..."
-openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-    -keyout /etc/xray/server.key \
-    -out /etc/xray/server.crt \
-    -subj "/CN=$SERVER_IP"
-print_success "自签证书生成完成"
+print_info "生成 x25519 密钥对..."
+X25519_OUTPUT=$(/usr/local/Xray/xray x25519)
+# 兼容新旧版本字段名：旧版 "Private key:" / "Public key:"，新版 "PrivateKey:" / "Password:"
+REALITY_PRIVATE_KEY=$(echo "$X25519_OUTPUT" | grep -iE 'private[ ]?key' | awk -F: '{print $2}' | tr -d '[:space:]')
+REALITY_PUBLIC_KEY=$(echo "$X25519_OUTPUT" | grep -iE 'public[ ]?key|password' | awk -F: '{print $2}' | tr -d '[:space:]')
 
-print_info "设置证书文件权限..."
-chmod 644 /etc/xray/server.crt
-chmod 644 /etc/xray/server.key
-print_success "权限设置完成"
+if [ -z "$REALITY_PRIVATE_KEY" ] || [ -z "$REALITY_PUBLIC_KEY" ]; then
+    print_error "REALITY 密钥生成失败，无法解析 xray x25519 输出"
+    echo "$X25519_OUTPUT"
+    exit 1
+fi
+print_success "x25519 密钥对生成完成"
+
+print_info "生成 shortId..."
+REALITY_SHORT_ID=$(openssl rand -hex 8)
+print_success "shortId: ${YELLOW}$REALITY_SHORT_ID${NC}"
 
 # ============ 阶段6: 创建Xray配置文件 ============
 print_step "6" "创建Xray配置文件"
@@ -230,15 +235,14 @@ cat > /etc/xray/config.json <<EOF
       },
       "streamSettings": {
         "network": "tcp",
-        "security": "tls",
-        "tlsSettings": {
-          "minVersion": "1.2",
-          "certificates": [
-            {
-              "certificateFile": "/etc/xray/server.crt",
-              "keyFile": "/etc/xray/server.key"
-            }
-          ]
+        "security": "reality",
+        "realitySettings": {
+          "show": false,
+          "dest": "$REALITY_DEST",
+          "xver": 0,
+          "serverNames": ["$REALITY_SERVER_NAME"],
+          "privateKey": "$REALITY_PRIVATE_KEY",
+          "shortIds": ["$REALITY_SHORT_ID"]
         }
       }
     }
@@ -253,6 +257,18 @@ cat > /etc/xray/config.json <<EOF
 EOF
 
 print_success "配置文件创建完成"
+
+print_info "保存 REALITY 参数到 /etc/xray/reality.env"
+cat > /etc/xray/reality.env <<EOF
+XRAY_PORT=$XRAY_PORT
+XRAY_UUID=$XRAY_UUID
+PUBLIC_KEY=$REALITY_PUBLIC_KEY
+SHORT_ID=$REALITY_SHORT_ID
+SERVER_NAME=$REALITY_SERVER_NAME
+SERVER_IP=$SERVER_IP
+EOF
+chmod 600 /etc/xray/reality.env
+print_success "REALITY 参数已保存"
 
 # ============ 阶段7: 验证配置文件 ============
 print_step "7" "验证配置文件"
@@ -340,15 +356,17 @@ echo -e "  ${BLUE}地址:${NC} $SERVER_IP"
 echo -e "  ${BLUE}端口:${NC} $XRAY_PORT"
 echo -e "  ${BLUE}UUID:${NC} $XRAY_UUID"
 echo -e "  ${BLUE}传输:${NC} TCP"
-echo -e "  ${BLUE}安全:${NC} TLS"
+echo -e "  ${BLUE}安全:${NC} REALITY"
 echo -e "  ${BLUE}流控:${NC} xtls-rprx-vision"
-echo -e "  ${BLUE}跳过证书验证:${NC} 是"
+echo -e "  ${BLUE}SNI:${NC} $REALITY_SERVER_NAME"
+echo -e "  ${BLUE}公钥(pbk):${NC} $REALITY_PUBLIC_KEY"
+echo -e "  ${BLUE}shortId(sid):${NC} $REALITY_SHORT_ID"
 echo ""
 echo -e "${GREEN}═══════════════════════════════════════════════════════${NC}"
 echo -e "${YELLOW}VLESS分享链接${NC}"
 echo -e "${GREEN}═══════════════════════════════════════════════════════${NC}"
 echo ""
-echo "vless://$XRAY_UUID@$SERVER_IP:$XRAY_PORT?security=tls&flow=xtls-rprx-vision&type=tcp&allowInsecure=1"
+echo "vless://$XRAY_UUID@$SERVER_IP:$XRAY_PORT?security=reality&encryption=none&pbk=$REALITY_PUBLIC_KEY&sid=$REALITY_SHORT_ID&sni=$REALITY_SERVER_NAME&fp=chrome&flow=xtls-rprx-vision&type=tcp#xray-reality"
 echo ""
 echo -e "${GREEN}═══════════════════════════════════════════════════════${NC}"
 echo ""
