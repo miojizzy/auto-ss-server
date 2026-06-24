@@ -136,7 +136,7 @@ awsl term i-0abc123def456
 
 ## Xray VLESS 服务
 
-在单台服务器上一键部署/卸载 Xray VLESS（自签证书 + IP 方式），与上面的 AWS 自动化相互独立。
+在单台服务器上一键部署/卸载 Xray VLESS（REALITY 协议，无需证书），与上面的 AWS 自动化相互独立。
 
 ### 一键安装
 

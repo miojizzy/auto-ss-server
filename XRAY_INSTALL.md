@@ -42,6 +42,7 @@ sudo bash src/xray/xray-install.sh
 ✅ **代理支持** - 支持 HTTP/HTTPS 代理
 ✅ **幂等性** - 可以安全地重复运行
 ✅ **自动清理** - 失败时显示具体错误
+✅ **REALITY 协议** - 借用真实大站 TLS 指纹，无需证书，抗封锁更强
 
 ## 故障排查
 
@@ -138,7 +139,8 @@ curl -fsSL ... | sudo bash
 
 ⚠️ 脚本必须以 root 身份运行
 ⚠️ 会覆盖 `/etc/xray/config.json`
-⚠️ 开放防火墙 443 端口
+⚠️ 使用 REALITY 协议，无需证书，客户端无需 allowInsecure
+⚠️ 默认伪装目标 www.microsoft.com:443
 ⚠️ 需要有效的网络连接和 DNS
 
 ## 支持
