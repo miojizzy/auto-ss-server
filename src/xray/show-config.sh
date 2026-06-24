@@ -24,31 +24,26 @@ print_error() {
     echo -e "${RED}✗${NC} $1"
 }
 
-CONFIG_FILE="/etc/xray/config.json"
+REALITY_ENV="/etc/xray/reality.env"
 
-# 检查配置文件
-if [ ! -f "$CONFIG_FILE" ]; then
-    print_error "配置文件不存在: $CONFIG_FILE"
-    echo "请先运行安装脚本"
+# 检查 REALITY 配置
+if [ ! -f "$REALITY_ENV" ]; then
+    print_error "未检测到 REALITY 配置: $REALITY_ENV"
+    echo "请先运行安装脚本 (xray-install.sh)"
     exit 1
 fi
 
-# 提取连接信息
-XRAY_PORT=$(grep -oP '"port":\s*\K\d+' "$CONFIG_FILE" | head -1)
-XRAY_UUID=$(grep -oP '"id":\s*"\K[^"]+' "$CONFIG_FILE" | head -1)
-SERVER_IP=$(curl -s --max-time 5 https://api.ipify.org 2>/dev/null \
-    || curl -s --max-time 5 https://ifconfig.me 2>/dev/null \
-    || curl -s --max-time 5 https://icanhazip.com 2>/dev/null \
-    || hostname -I | awk '{print $1}')
-SERVER_IP=$(echo "$SERVER_IP" | tr -d '[:space:]')
+# shellcheck disable=SC1090
+source "$REALITY_ENV"
 
-if [ -z "$XRAY_PORT" ] || [ -z "$XRAY_UUID" ] || [ -z "$SERVER_IP" ]; then
-    print_error "无法提取连接信息"
+if [ -z "${XRAY_PORT:-}" ] || [ -z "${XRAY_UUID:-}" ] || [ -z "${PUBLIC_KEY:-}" ] \
+   || [ -z "${SHORT_ID:-}" ] || [ -z "${SERVER_NAME:-}" ] || [ -z "${SERVER_IP:-}" ]; then
+    print_error "REALITY 配置不完整，请重新运行安装脚本"
     exit 1
 fi
 
 # 生成分享链接
-VLESS_LINK="vless://$XRAY_UUID@$SERVER_IP:$XRAY_PORT?security=tls&flow=xtls-rprx-vision&type=tcp&allowInsecure=1"
+VLESS_LINK="vless://$XRAY_UUID@$SERVER_IP:$XRAY_PORT?security=reality&encryption=none&pbk=$PUBLIC_KEY&sid=$SHORT_ID&sni=$SERVER_NAME&fp=chrome&flow=xtls-rprx-vision&type=tcp#xray-reality"
 
 # 显示信息
 echo ""
@@ -61,9 +56,11 @@ echo -e "  ${BLUE}地址:${NC} $SERVER_IP"
 echo -e "  ${BLUE}端口:${NC} $XRAY_PORT"
 echo -e "  ${BLUE}UUID:${NC} $XRAY_UUID"
 echo -e "  ${BLUE}传输:${NC} TCP"
-echo -e "  ${BLUE}安全:${NC} TLS"
+echo -e "  ${BLUE}安全:${NC} REALITY"
 echo -e "  ${BLUE}流控:${NC} xtls-rprx-vision"
-echo -e "  ${BLUE}跳过证书验证:${NC} 是"
+echo -e "  ${BLUE}SNI:${NC} $SERVER_NAME"
+echo -e "  ${BLUE}公钥(pbk):${NC} $PUBLIC_KEY"
+echo -e "  ${BLUE}shortId(sid):${NC} $SHORT_ID"
 echo ""
 echo -e "${YELLOW}VLESS 分享链接:${NC}"
 echo ""
