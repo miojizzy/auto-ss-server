@@ -181,7 +181,7 @@ curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/xr
   | sudo bash -s install "vless://..."
 ```
 
-详细说明见 [XRAY_INSTALL.md](XRAY_INSTALL.md)。
+详细说明见 [docs/xray-install.md](docs/xray-install.md)。
 
 ## Shadowsocks (Outline) 服务
 
@@ -227,11 +227,13 @@ crontab -e
 ## 文档
 
 - [设计文档](docs/DESIGN.md)
+- [Xray VLESS 安装文档](docs/xray-install.md)
+- [客户端配置指南](docs/client-config.md)
 - [awsl 工具文档](src/awsl/README.md)
 - [启动模板文档](src/launch_template/README.md)
 - [Shadowsocks 文档（旧版 Outline）](src/ssserver/README.md)
 - [Shadowsocks 一键部署文档](src/shadowsocks/README.md)
-- [Xray VLESS 安装文档](XRAY_INSTALL.md)
+- [Xray VLESS 安装文档](docs/xray-install.md)
 - [定时任务文档](src/crontab/README.md)
 
 ## 前置要求
