@@ -27,7 +27,9 @@ auto_ssserver/
 └── src/                       # 源代码
     ├── awsl/                  # AWS 管理工具
     ├── launch_template/       # 启动模板管理
-    ├── ssserver/              # Shadowsocks 服务
+    ├── ssserver/              # Shadowsocks 服务（旧版 Outline 安装脚本）
+    ├── shadowsocks/           # Shadowsocks 一键部署（server.sh / client.sh）
+    ├── xray/                  # Xray VLESS 一键部署（server.sh / client.sh）
     └── crontab/               # 定时任务
 ```
 
@@ -136,32 +138,38 @@ awsl term i-0abc123def456
 
 ## Xray VLESS 服务
 
-在单台服务器上一键部署/卸载 Xray VLESS（REALITY 协议，无需证书），与上面的 AWS 自动化相互独立。
+在单台服务器上一键部署/卸载 Xray VLESS（REALITY 协议，无需证书），与上面的 AWS 自动化相互独立。脚本以子命令区分操作。
 
 ### 一键安装
 
 ```bash
 # 默认端口 443
-curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/xray/xray-install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/xray/server.sh | sudo bash -s install
 
 # 自定义端口（如 8443）
-curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/xray/xray-install.sh | sudo bash -s 8443
+curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/xray/server.sh | sudo bash -s install 8443
 
 # 使用本地脚本
-sudo bash src/xray/xray-install.sh 8443
+sudo bash src/xray/server.sh install 8443
 ```
 
 ### 一键卸载
 
 ```bash
 # 交互式确认后卸载
-curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/xray/xray-uninstall.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/xray/server.sh | sudo bash -s uninstall
 
 # 跳过确认直接卸载
-curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/xray/xray-uninstall.sh | sudo bash -s -- -y
+curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/xray/server.sh | sudo bash -s uninstall -y
 
 # 使用本地脚本
-sudo bash src/xray/xray-uninstall.sh -y
+sudo bash src/xray/server.sh uninstall -y
+```
+
+### 查看连接信息
+
+```bash
+sudo bash src/xray/server.sh config
 ```
 
 ### Linux 一键客户端
@@ -169,11 +177,37 @@ sudo bash src/xray/xray-uninstall.sh -y
 在客户端 Linux 机器上安装（解析分享链接，本地 SOCKS5 1080）：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/xray/xray-client-install.sh \
-  | sudo bash -s -- "vless://..."
+curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/xray/client.sh \
+  | sudo bash -s install "vless://..."
 ```
 
 详细说明见 [XRAY_INSTALL.md](XRAY_INSTALL.md)。
+
+## Shadowsocks (Outline) 服务
+
+在单台服务器上一键部署/卸载 Shadowsocks（基于 outline-ss-server，编译二进制 + systemd 托管），脚本结构与 Xray 一致。
+
+### 一键安装 / 卸载 / 查看
+
+```bash
+# 安装（默认随机端口 + 随机密码，也可 install 8388:mypass）
+curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/shadowsocks/server.sh | sudo bash -s install
+
+# 查看连接信息 / ss:// 链接
+sudo bash src/shadowsocks/server.sh config
+
+# 卸载
+sudo bash src/shadowsocks/server.sh uninstall -y
+```
+
+### Linux 一键客户端
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/shadowsocks/client.sh \
+  | sudo bash -s install "ss://..."
+```
+
+详细说明见 [src/shadowsocks/README.md](src/shadowsocks/README.md)。
 
 ## 定时任务
 
@@ -195,7 +229,9 @@ crontab -e
 - [设计文档](docs/DESIGN.md)
 - [awsl 工具文档](src/awsl/README.md)
 - [启动模板文档](src/launch_template/README.md)
-- [Shadowsocks 文档](src/ssserver/README.md)
+- [Shadowsocks 文档（旧版 Outline）](src/ssserver/README.md)
+- [Shadowsocks 一键部署文档](src/shadowsocks/README.md)
+- [Xray VLESS 安装文档](XRAY_INSTALL.md)
 - [定时任务文档](src/crontab/README.md)
 
 ## 前置要求

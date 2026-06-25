@@ -1,12 +1,16 @@
 #!/bin/bash
 
-# Xray 客户端一键安装脚本（REALITY）
-# 用法:
-#   sudo bash xray-client-install.sh "vless://..."
-#   VLESS_LINK="vless://..." sudo bash xray-client-install.sh
-#   sudo bash xray-client-install.sh uninstall
-#   curl -fsSL <url> | sudo bash -s -- "vless://..."
-#   curl -fsSL <url> | sudo VLESS_LINK="vless://..." bash
+# Xray 客户端管理脚本（REALITY）
+# 用子命令区分操作：
+#   sudo bash client.sh install "vless://..."   # 安装本地 SOCKS5 代理（127.0.0.1:1080）
+#   VLESS_LINK="vless://..." sudo bash client.sh install
+#   sudo bash client.sh uninstall               # 卸载
+#   sudo bash client.sh status                  # 服务状态
+#   sudo bash client.sh logs                    # 实时日志
+#   sudo bash client.sh help
+# curl|bash 用法:
+#   curl -fsSL <url>/client.sh | sudo bash -s install "vless://..."
+#   curl -fsSL <url>/client.sh | sudo VLESS_LINK="vless://..." bash -s install
 
 set -euo pipefail
 
@@ -27,28 +31,36 @@ SERVICE_FILE="/etc/systemd/system/xray-client.service"
 XRAY_BIN="/usr/local/Xray/xray"
 SOCKS_PORT=1080
 
-usage() {
-    echo "用法:"
-    echo "  sudo bash xray-client-install.sh \"vless://uuid@ip:port?security=reality&pbk=...&sid=...&sni=...&flow=xtls-rprx-vision&type=tcp\""
-    echo "  VLESS_LINK=\"vless://...\" sudo bash xray-client-install.sh"
-    echo "  sudo bash xray-client-install.sh uninstall"
+print_help() {
+    echo -e "${BLUE}Xray 客户端管理工具${NC}"
+    echo ""
+    echo "用法: sudo bash client.sh <命令> [参数]"
+    echo ""
+    echo -e "${YELLOW}可用命令:${NC}"
+    echo "  install \"vless://...\"   安装本地 SOCKS5 代理（127.0.0.1:$SOCKS_PORT）"
+    echo "                          也可用 VLESS_LINK 环境变量传链接"
+    echo "  uninstall               卸载客户端"
+    echo "  status                  查看服务状态"
+    echo "  logs                    查看实时日志"
+    echo "  help                    显示此帮助信息"
+    echo ""
+    echo "链接从服务端获取: sudo bash server.sh config"
 }
 
-# 检查 root
-if [[ $EUID -ne 0 ]]; then
-    print_error "此脚本必须以 root 身份运行"
-    echo "请使用 sudo"
-    exit 1
-fi
+require_root() {
+    if [[ $EUID -ne 0 ]]; then
+        print_error "此操作必须以 root 身份运行"
+        echo "请使用 sudo"
+        exit 1
+    fi
+}
 
 # 解析 vless:// 链接，导出全局变量 V_UUID V_IP V_PORT V_PBK V_SID V_SNI V_FLOW V_FP V_SECURITY
 parse_link() {
     local link="$1"
-    # 去掉 vless:// 前缀和 #备注
     link="${link#vless://}"
     link="${link%%#*}"
 
-    # 主体: uuid@ip:port?query
     local userinfo="${link%%\?*}"     # uuid@ip:port
     local query="${link#*\?}"         # 查询串
     [[ "$query" == "$link" ]] && query=""
@@ -58,7 +70,6 @@ parse_link() {
     V_IP="${hostport%%:*}"
     V_PORT="${hostport##*:}"
 
-    # 从 query 提取单个参数
     _q() { echo "$query" | tr '&' '\n' | grep -E "^$1=" | head -1 | cut -d= -f2-; }
     V_SECURITY="$(_q security)"
     V_PBK="$(_q pbk)"
@@ -68,14 +79,13 @@ parse_link() {
     V_FP="$(_q fp)"
     [[ -z "$V_FP" ]] && V_FP="chrome"
 
-    # 校验
     if [[ "$V_SECURITY" != "reality" ]]; then
         print_error "链接 security 必须为 reality（当前: ${V_SECURITY:-空}）"
         exit 1
     fi
     if [[ -z "$V_UUID" || -z "$V_IP" || -z "$V_PORT" || -z "$V_PBK" ]]; then
         print_error "链接缺少必需字段 (uuid/ip/port/pbk)"
-        usage
+        print_help
         exit 1
     fi
 }
@@ -83,7 +93,6 @@ parse_link() {
 # 检测架构并下载安装 Xray 二进制（若已存在则跳过下载）
 install_xray() {
     print_step "1" "检测架构并安装 Xray"
-
     local arch zip
     arch="$(uname -m)"
     case "$arch" in
@@ -217,15 +226,29 @@ print_result() {
     echo "  curl -x socks5h://127.0.0.1:$SOCKS_PORT https://ipinfo.io/ip"
     echo ""
     echo -e "${YELLOW}管理命令:${NC}"
-    echo "  sudo systemctl status xray-client"
-    echo "  sudo systemctl restart xray-client"
-    echo "  sudo journalctl -u xray-client -f"
-    echo "  sudo bash xray-client-install.sh uninstall"
+    echo "  sudo bash client.sh status"
+    echo "  sudo bash client.sh logs"
+    echo "  sudo bash client.sh uninstall"
     echo ""
 }
 
-# 卸载
+do_install() {
+    require_root
+    local link="${1:-${VLESS_LINK:-}}"
+    if [[ -z "$link" ]]; then
+        print_error "未提供 vless:// 链接"
+        print_help
+        exit 1
+    fi
+    parse_link "$link"
+    install_xray
+    write_config
+    setup_service
+    print_result
+}
+
 do_uninstall() {
+    require_root
     print_step "1" "卸载 Xray 客户端"
     if systemctl list-unit-files 2>/dev/null | grep -q '^xray-client\.service'; then
         systemctl stop xray-client 2>/dev/null || true
@@ -245,28 +268,29 @@ do_uninstall() {
     print_info "二进制 /usr/local/Xray 未删除（可能被服务端使用）"
 }
 
-main() {
-    parse_link "$VLESS_LINK"
-    install_xray
-    write_config
-    setup_service
-    print_result
+show_status() {
+    require_root
+    systemctl status xray-client
 }
 
-# ===== 入口 =====
-ACTION="${1:-}"
+show_logs() {
+    require_root
+    journalctl -u xray-client -f
+}
 
-if [[ "$ACTION" == "uninstall" ]]; then
-    do_uninstall
-    exit 0
-fi
+# ===== 入口：子命令分发 =====
+ACTION="${1:-help}"
 
-# 取链接：参数优先，其次环境变量
-VLESS_LINK="${1:-${VLESS_LINK:-}}"
-if [[ -z "$VLESS_LINK" ]]; then
-    print_error "未提供 vless:// 链接"
-    usage
-    exit 1
-fi
-
-main
+case "$ACTION" in
+    install)        do_install "${2:-}" ;;
+    uninstall)      do_uninstall ;;
+    status)         show_status ;;
+    logs)           show_logs ;;
+    help|-h|--help) print_help ;;
+    *)
+        print_error "未知命令: $ACTION"
+        echo ""
+        print_help
+        exit 1
+        ;;
+esac

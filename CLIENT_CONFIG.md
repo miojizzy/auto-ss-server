@@ -5,7 +5,7 @@
 在服务器上运行：
 
 ```bash
-sudo bash src/xray/show-config.sh
+sudo bash src/xray/server.sh config
 ```
 
 或者查看配置文件：
@@ -129,15 +129,15 @@ vless = server_ip:port, method=none, password=uuid, obfs=off, tls13=1, tag=Xray
 
 ```bash
 # 方式 A：参数传链接
-curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/xray/xray-client-install.sh \
-  | sudo bash -s -- "vless://uuid@ip:port?security=reality&pbk=...&sid=...&sni=...&flow=xtls-rprx-vision&type=tcp"
+curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/xray/client.sh \
+  | sudo bash -s install "vless://uuid@ip:port?security=reality&pbk=...&sid=...&sni=...&flow=xtls-rprx-vision&type=tcp"
 
 # 方式 B：环境变量传链接
-curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/xray/xray-client-install.sh \
-  | sudo VLESS_LINK="vless://..." bash
+curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/xray/client.sh \
+  | sudo VLESS_LINK="vless://..." bash -s install
 ```
 
-链接从服务器 `sudo bash src/xray/show-config.sh` 获取。
+链接从服务器 `sudo bash src/xray/server.sh config` 获取。
 
 安装后本地 SOCKS5 代理在 `127.0.0.1:1080`，测试：
 
@@ -148,9 +148,9 @@ curl -x socks5h://127.0.0.1:1080 https://ipinfo.io/ip   # 应显示服务器 IP
 管理 / 卸载：
 
 ```bash
-sudo systemctl status xray-client
-sudo journalctl -u xray-client -f
-sudo bash xray-client-install.sh uninstall
+sudo bash src/xray/client.sh status
+sudo bash src/xray/client.sh logs
+sudo bash src/xray/client.sh uninstall
 ```
 
 ## 分享链接导入

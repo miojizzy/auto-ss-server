@@ -2,37 +2,40 @@
 
 ## 快速安装
 
+> 服务端脚本 `server.sh` 以子命令区分操作：`install` / `uninstall` / `config` / `status` / `restart` 等。
+
 ### 方法 1: 直接运行（推荐）
 
 ```bash
 # 从 GitHub 直接安装
-curl -fsSL https://raw.githubusercontent.com/你的用户名/auto-ss-server/main/src/xray/xray-install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/xray/server.sh | sudo bash -s install
 ```
 
 或者使用 wget：
 
 ```bash
-wget -O - https://raw.githubusercontent.com/你的用户名/auto-ss-server/main/src/xray/xray-install.sh | sudo bash
+wget -O - https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/xray/server.sh | sudo bash -s install
 ```
 
 ### 方法 2: 下载后运行
 
 ```bash
 # 下载脚本
-curl -fsSL https://raw.githubusercontent.com/你的用户名/auto-ss-server/main/src/xray/xray-install.sh -o xray-install.sh
+curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/xray/server.sh -o server.sh
 
 # 或使用 wget
-wget https://raw.githubusercontent.com/你的用户名/auto-ss-server/main/src/xray/xray-install.sh
+wget https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/xray/server.sh
 
-# 运行脚本
-sudo bash xray-install.sh
+# 运行脚本（默认端口 443，可在 install 后跟端口）
+sudo bash server.sh install
+sudo bash server.sh install 8443
 ```
 
 ### 方法 3: 使用本地文件
 
 ```bash
 cd /path/to/auto-ss-server
-sudo bash src/xray/xray-install.sh
+sudo bash src/xray/server.sh install
 ```
 
 ## 脚本特性
@@ -63,9 +66,9 @@ export HTTPS_PROXY=http://proxy:port
 确保使用 `sudo` 运行：
 
 ```bash
-sudo bash xray-install.sh
+sudo bash server.sh install
 # 或
-curl -fsSL ... | sudo bash
+curl -fsSL ... | sudo bash -s install
 ```
 
 ### 3. 检查日志
@@ -85,33 +88,42 @@ sudo tail -f /var/log/xray/access.log
 
 ## 管理命令
 
+`server.sh` 内置常用管理子命令：
+
 ```bash
 # 查看服务状态
-sudo systemctl status xray
+sudo bash src/xray/server.sh status
 
-# 重启服务
-sudo systemctl restart xray
+# 重启 / 停止 / 启动服务
+sudo bash src/xray/server.sh restart
+sudo bash src/xray/server.sh stop
+sudo bash src/xray/server.sh start
 
-# 停止服务
-sudo systemctl stop xray
+# 查看连接信息 / VLESS 分享链接
+sudo bash src/xray/server.sh config
 
-# 启动服务
-sudo systemctl start xray
+# 实时日志 / 错误日志 / 访问日志
+sudo bash src/xray/server.sh logs
+sudo bash src/xray/server.sh error
+sudo bash src/xray/server.sh access
 
-# 查看配置
-sudo cat /etc/xray/config.json
+# 测试 / 重载配置
+sudo bash src/xray/server.sh test
+sudo bash src/xray/server.sh reload
 ```
+
+> 也可直接使用 systemd：`sudo systemctl status xray`、`sudo systemctl restart xray`。
 
 ## 卸载
 
-在已安装的机器上运行卸载脚本，会停止服务并删除程序、配置、日志及防火墙规则：
+在已安装的机器上运行卸载子命令，会停止服务并删除程序、配置、日志及防火墙规则：
 
 ```bash
 # 交互式确认后卸载
-sudo bash src/xray/xray-uninstall.sh
+sudo bash src/xray/server.sh uninstall
 
 # 跳过确认直接卸载
-sudo bash src/xray/xray-uninstall.sh -y
+sudo bash src/xray/server.sh uninstall -y
 ```
 
 卸载内容：
