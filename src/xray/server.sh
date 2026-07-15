@@ -403,6 +403,19 @@ do_uninstall() {
         print_info "未找到 xray 服务（跳过）"
     fi
 
+    # 兜底：systemctl stop 在某些环境（service 文件被改坏 / daemon 卡死）会失败
+    # 残留 xray 进程会导致端口继续监听。强制 pkill 兜底并校验端口已释放。
+    if pgrep -f "$XRAY_BIN" >/dev/null 2>&1; then
+        print_info "检测到 xray 进程残留，强制终止..."
+        pkill -9 -f "$XRAY_BIN" 2>/dev/null || true
+        sleep 1
+    fi
+    if pgrep -f "$XRAY_BIN" >/dev/null 2>&1; then
+        print_error "xray 进程仍在运行，请手动检查: ps -ef | grep xray"
+    else
+        print_success "xray 进程已确认退出"
+    fi
+
     print_step "3" "删除 systemd 服务文件"
     if [[ -f "$SERVICE_FILE" ]]; then
         rm -f "$SERVICE_FILE"

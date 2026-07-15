@@ -320,6 +320,18 @@ do_uninstall() {
         print_info "未找到 shadowsocks 服务（跳过）"
     fi
 
+    # 兜底：systemctl stop 失败时强制终止进程
+    if pgrep -f "$SS_BIN" >/dev/null 2>&1; then
+        print_info "检测到 outline-ss-server 进程残留，强制终止..."
+        pkill -9 -f "$SS_BIN" 2>/dev/null || true
+        sleep 1
+    fi
+    if pgrep -f "$SS_BIN" >/dev/null 2>&1; then
+        print_error "outline-ss-server 进程仍在运行，请手动检查: ps -ef | grep outline-ss-server"
+    else
+        print_success "outline-ss-server 进程已确认退出"
+    fi
+
     print_step "3" "删除 systemd 服务文件"
     if [[ -f "$SERVICE_FILE" ]]; then
         rm -f "$SERVICE_FILE"

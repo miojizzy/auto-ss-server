@@ -79,6 +79,13 @@ parse_link() {
     V_FP="$(_q fp)"
     [[ -z "$V_FP" ]] && V_FP="chrome"
 
+    # 去掉常见首尾空白（复制/手敲易丢字符或多空格）
+    V_UUID="${V_UUID// /}";  V_UUID="$(echo -n "$V_UUID" | tr -d '\r\n[:space:]')"
+    V_PBK="$(echo -n "$V_PBK" | tr -d '\r\n[:space:]')"
+    V_SID="$(echo -n "$V_SID" | tr -d '\r\n[:space:]')"
+    V_SNI="${V_SNI// /}";    V_SNI="$(echo -n "$V_SNI" | tr -d '\r\n[:space:]')"
+    V_FLOW="${V_FLOW// /}";  V_FLOW="$(echo -n "$V_FLOW" | tr -d '\r\n[:space:]')"
+
     if [[ "$V_SECURITY" != "reality" ]]; then
         print_error "链接 security 必须为 reality（当前: ${V_SECURITY:-空}）"
         exit 1
@@ -86,6 +93,24 @@ parse_link() {
     if [[ -z "$V_UUID" || -z "$V_IP" || -z "$V_PORT" || -z "$V_PBK" ]]; then
         print_error "链接缺少必需字段 (uuid/ip/port/pbk)"
         print_help
+        exit 1
+    fi
+
+    # 校验 shortId：1~16 位十六进制字符
+    if [[ -z "$V_SID" ]]; then
+        print_error "链接缺少 sid (shortId)"
+        exit 1
+    fi
+    if [[ ${#V_SID} -gt 16 ]] || ! [[ "$V_SID" =~ ^[0-9a-fA-F]+$ ]]; then
+        print_error "shortId 非法: '$V_SID' (长度 ${#V_SID}，需 1~16 位十六进制字符)"
+        print_info "短 ID 复制时容易丢字符或多空格，请从服务端 sudo bash server.sh config 重新复制"
+        exit 1
+    fi
+
+    # 校验 publicKey：base64url 长度合法（X25519 公钥固定 32 字节，base64url = 43 字符）
+    if [[ ${#V_PBK} -ne 43 ]]; then
+        print_error "pbk 长度异常: ${#V_PBK} (期望 43，X25519 公钥 base64url 长度)"
+        print_info "可能是链接复制不完整，请从服务端 sudo bash server.sh config 重新复制"
         exit 1
     fi
 }
