@@ -192,8 +192,14 @@ do_install() {
 
     # ---- 阶段6: 生成 REALITY 密钥 ----
     print_step "6" "生成 REALITY 密钥"
-    local reality_dest="www.microsoft.com:443"
-    local reality_server_name="www.microsoft.com"
+    # 伪装目标(dest/SNI)：默认 www.yahoo.com。
+    # 注意 www.microsoft.com 的 TLS 握手与 REALITY 借壳转发不兼容，
+    # 会导致客户端 "handshake did not complete"，切勿用作默认。
+    # 可用 REALITY_DEST 环境变量覆盖(只写域名，端口固定 443)。
+    local reality_domain="${REALITY_DEST:-www.yahoo.com}"
+    local reality_dest="${reality_domain}:443"
+    local reality_server_name="$reality_domain"
+    print_success "伪装目标(SNI): ${YELLOW}$reality_server_name${NC}"
 
     print_info "生成 x25519 密钥对..."
     local x25519_output reality_private_key reality_public_key

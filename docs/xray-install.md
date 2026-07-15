@@ -156,7 +156,8 @@ curl -fsSL ... | sudo bash
 ⚠️ 脚本必须以 root 身份运行
 ⚠️ 会覆盖 `/etc/xray/config.json`
 ⚠️ 使用 REALITY 协议，无需证书，客户端无需 allowInsecure
-⚠️ 默认伪装目标 www.microsoft.com:443
+⚠️ 默认伪装目标 www.yahoo.com:443（可用 `REALITY_DEST` 环境变量覆盖）
+⚠️ 勿用 www.microsoft.com 作伪装目标：其 TLS 握手与 REALITY 借壳转发不兼容，会导致客户端 "handshake did not complete"
 ⚠️ 需要有效的网络连接和 DNS
 
 ## 支持
