@@ -4,7 +4,7 @@
 # 用子命令区分操作：
 #   sudo bash client.sh install "ss://..."   # 安装本地 SOCKS5 代理（127.0.0.1:1080）
 #   SS_LINK="ss://..." sudo bash client.sh install
-#   sudo bash client.sh uninstall            # 卸载
+#   sudo bash client.sh uninstall [-y]        # 卸载（-y 跳过确认）
 #   sudo bash client.sh status               # 服务状态
 #   sudo bash client.sh logs                 # 实时日志
 #   sudo bash client.sh help
@@ -40,7 +40,7 @@ print_help() {
     echo -e "${YELLOW}可用命令:${NC}"
     echo "  install \"ss://...\"   安装本地 SOCKS5 代理（127.0.0.1:$SOCKS_PORT）"
     echo "                       也可用 SS_LINK 环境变量传链接"
-    echo "  uninstall            卸载客户端"
+    echo "  uninstall [-y]       卸载客户端（-y 跳过确认）"
     echo "  status               查看服务状态"
     echo "  logs                 查看实时日志"
     echo "  help                 显示此帮助信息"
@@ -214,7 +214,8 @@ print_result() {
     echo -e "${YELLOW}管理命令:${NC}"
     echo "  sudo bash client.sh status"
     echo "  sudo bash client.sh logs"
-    echo "  sudo bash client.sh uninstall"
+    echo "  sudo bash client.sh uninstall      # 交互确认"
+    echo "  sudo bash client.sh uninstall -y   # 跳过确认"
     echo ""
 }
 
@@ -235,23 +236,61 @@ do_install() {
 
 do_uninstall() {
     require_root
+    local force="${1:-}"
     print_step "1" "卸载 Shadowsocks 客户端"
+
+    # 幂等：完全没装过就直接返回
+    if ! systemctl list-unit-files 2>/dev/null | grep -q '^shadowsocks-client\.service' \
+       && [[ ! -f "$SERVICE_FILE" ]] \
+       && [[ ! -d "$CLIENT_DIR" ]] \
+       && [[ ! -x "$SSLOCAL_BIN" ]]; then
+        print_info "未检测到 shadowsocks-client 安装痕迹，无需卸载"
+        return 0
+    fi
+
+    # 交互确认（-y 跳过）
+    if [[ "$force" != "-y" && "$force" != "--yes" ]]; then
+        echo ""
+        echo "将删除以下内容："
+        [[ -f "$SERVICE_FILE" ]] && echo "  - 服务: $SERVICE_FILE"
+        [[ -d "$CLIENT_DIR" ]]   && echo "  - 配置目录: $CLIENT_DIR"
+        [[ -x "$SSLOCAL_BIN" ]]   && echo "  - 二进制: $SSLOCAL_BIN"
+        echo ""
+        read -rp "确认卸载？[y/N] " ans
+        [[ "$ans" =~ ^[Yy]$ ]] || { print_info "已取消"; return 0; }
+    fi
+
+    # 1) 停服务
     if systemctl list-unit-files 2>/dev/null | grep -q '^shadowsocks-client\.service'; then
         systemctl stop shadowsocks-client 2>/dev/null || true
         systemctl disable shadowsocks-client 2>/dev/null || true
         print_success "服务已停止并禁用"
-    else
-        print_info "未找到 shadowsocks-client 服务（跳过）"
     fi
+
+    # 2) 删服务文件
     if [[ -f "$SERVICE_FILE" ]]; then
         rm -f "$SERVICE_FILE"
         systemctl daemon-reload
         systemctl reset-failed 2>/dev/null || true
         print_success "服务文件已删除"
     fi
-    rm -rf "$CLIENT_DIR"
-    rm -f "$SSLOCAL_BIN"
-    print_success "已删除 $CLIENT_DIR 及 sslocal 二进制"
+
+    # 3) 删配置目录
+    if [[ -d "$CLIENT_DIR" ]]; then
+        rm -rf "$CLIENT_DIR"
+        print_success "已删除 $CLIENT_DIR"
+    fi
+
+    # 4) 删二进制（sslocal 是单文件，无依赖目录，直接删）
+    if [[ -x "$SSLOCAL_BIN" ]]; then
+        rm -f "$SSLOCAL_BIN"
+        print_success "已删除 $SSLOCAL_BIN"
+    fi
+
+    echo ""
+    echo -e "${GREEN}═══════════════════════════════════════════════════════${NC}"
+    print_success "Shadowsocks 客户端卸载完成"
+    echo -e "${GREEN}═══════════════════════════════════════════════════════${NC}"
 }
 
 show_status() {
@@ -269,7 +308,7 @@ ACTION="${1:-help}"
 
 case "$ACTION" in
     install)        do_install "${2:-}" ;;
-    uninstall)      do_uninstall ;;
+    uninstall)      do_uninstall "${2:-}" ;;
     status)         show_status ;;
     logs)           show_logs ;;
     help|-h|--help) print_help ;;

@@ -268,6 +268,15 @@ EOF
 do_uninstall() {
     require_root
 
+    # 幂等：完全没装过就直接返回
+    if ! systemctl list-unit-files 2>/dev/null | grep -q '^shadowsocks\.service' \
+       && [[ ! -f "$SERVICE_FILE" ]] \
+       && [[ ! -d "$SS_DIR" ]] \
+       && [[ ! -x "$SS_BIN" ]]; then
+        print_info "未检测到 shadowsocks 安装痕迹，无需卸载"
+        return 0
+    fi
+
     local assume_yes=0
     if [[ "${UNINSTALL_FLAG:-}" == "-y" || "${UNINSTALL_FLAG:-}" == "--yes" ]]; then
         assume_yes=1

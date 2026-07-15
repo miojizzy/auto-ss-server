@@ -349,6 +349,15 @@ EOF
 do_uninstall() {
     require_root
 
+    # 幂等：完全没装过就直接返回
+    if ! systemctl list-unit-files 2>/dev/null | grep -q '^xray\.service' \
+       && [[ ! -f "$SERVICE_FILE" ]] \
+       && [[ ! -d "$XRAY_DIR" ]] \
+       && [[ ! -d "$XRAY_CONFIG_DIR" ]]; then
+        print_info "未检测到 xray 安装痕迹，无需卸载"
+        return 0
+    fi
+
     local assume_yes=0
     if [[ "${UNINSTALL_FLAG:-}" == "-y" || "${UNINSTALL_FLAG:-}" == "--yes" ]]; then
         assume_yes=1
