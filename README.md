@@ -181,6 +181,19 @@ curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/xr
   | sudo bash -s install "vless://..."
 ```
 
+### 一键卸载
+
+```bash
+# 交互确认后卸载
+sudo bash src/xray/client.sh uninstall
+
+# 跳过确认直接卸载
+sudo bash src/xray/client.sh uninstall -y
+# 或
+curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/xray/client.sh \
+  | sudo bash -s uninstall -y
+```
+
 详细说明见 [docs/xray-install.md](docs/xray-install.md)。
 
 ## Shadowsocks (Outline) 服务
@@ -205,6 +218,19 @@ sudo bash src/shadowsocks/server.sh uninstall -y
 ```bash
 curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/shadowsocks/client.sh \
   | sudo bash -s install "ss://..."
+```
+
+### 一键卸载
+
+```bash
+# 交互确认后卸载
+sudo bash src/shadowsocks/client.sh uninstall
+
+# 跳过确认直接卸载
+sudo bash src/shadowsocks/client.sh uninstall -y
+# 或
+curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/shadowsocks/client.sh \
+  | sudo bash -s uninstall -y
 ```
 
 详细说明见 [src/shadowsocks/README.md](src/shadowsocks/README.md)。

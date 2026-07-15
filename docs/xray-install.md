@@ -110,6 +110,10 @@ sudo bash src/xray/server.sh access
 # 测试 / 重载配置
 sudo bash src/xray/server.sh test
 sudo bash src/xray/server.sh reload
+
+# 卸载（详见下方"卸载"章节）
+sudo bash src/xray/server.sh uninstall
+sudo bash src/xray/server.sh uninstall -y
 ```
 
 > 也可直接使用 systemd：`sudo systemctl status xray`、`sudo systemctl restart xray`。

@@ -80,7 +80,7 @@ curl -x socks5h://127.0.0.1:1080 https://ipinfo.io/ip   # 应显示服务器 IP
 | 命令 | 说明 |
 |------|------|
 | `install "ss://..."` | 安装本地 SOCKS5 代理（也可用 `SS_LINK` 环境变量） |
-| `uninstall` | 卸载客户端 |
+| `uninstall [-y]` | 卸载客户端（`-y` 跳过确认） |
 | `status` | 查看服务状态 |
 | `logs` | 查看实时日志 |
 | `help` | 显示帮助 |
