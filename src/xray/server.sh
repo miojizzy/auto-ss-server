@@ -41,6 +41,9 @@ XRAY_BIN="$XRAY_DIR/xray"
 XRAY_CONFIG_DIR="/etc/xray"
 XRAY_CONFIG="$XRAY_CONFIG_DIR/config.json"
 REALITY_ENV="$XRAY_CONFIG_DIR/reality.env"
+# 可选：预置固定参数(UUID/密钥/shortId/SNI/端口)的本地文件，安装时自动加载。
+# 命令行/环境变量优先级更高，不会被此文件覆盖。
+SERVER_ENV="/etc/xray-server.env"
 XRAY_LOG_DIR="/var/log/xray"
 XRAY_LOG_ERROR="$XRAY_LOG_DIR/error.log"
 XRAY_LOG_ACCESS="$XRAY_LOG_DIR/access.log"
@@ -110,6 +113,20 @@ setup_proxy() {
 do_install() {
     require_root
 
+    # 加载本地预置参数(若存在)。已在环境中设置的变量优先，不被文件覆盖。
+    if [[ -f "$SERVER_ENV" ]]; then
+        print_info "加载预置参数: $SERVER_ENV"
+        local __k __v
+        while IFS='=' read -r __k __v; do
+            [[ "$__k" =~ ^[[:space:]]*# || -z "$__k" ]] && continue
+            __k="$(echo -n "$__k" | tr -d '[:space:]')"
+            # 去掉值两端引号/空白
+            __v="$(echo -n "$__v" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'$/\1/")"
+            # 仅当该变量当前为空时才采用文件值（命令行环境变量优先）
+            [[ -z "${!__k:-}" ]] && export "$__k=$__v"
+        done < "$SERVER_ENV"
+    fi
+
     # ---- 阶段0: 网络环境检查 ----
     print_step "0" "网络环境检查"
     setup_proxy
@@ -169,10 +186,14 @@ do_install() {
 
     # ---- 阶段4: 生成 UUID ----
     print_step "4" "生成UUID"
-    print_info "生成随机UUID..."
     local xray_uuid
-    xray_uuid=$(uuidgen)
-    print_success "生成的UUID: ${YELLOW}$xray_uuid${NC}"
+    if [[ -n "${XRAY_UUID:-}" ]]; then
+        xray_uuid="$XRAY_UUID"
+        print_success "使用指定UUID: ${YELLOW}$xray_uuid${NC}"
+    else
+        xray_uuid=$(uuidgen)
+        print_success "生成的随机UUID: ${YELLOW}$xray_uuid${NC}"
+    fi
 
     # ---- 阶段5: 获取服务器IP ----
     print_step "5" "获取服务器IP地址"
@@ -195,29 +216,51 @@ do_install() {
     # 伪装目标(dest/SNI)：默认 www.yahoo.com。
     # 注意 www.microsoft.com 的 TLS 握手与 REALITY 借壳转发不兼容，
     # 会导致客户端 "handshake did not complete"，切勿用作默认。
-    # 可用 REALITY_DEST 环境变量覆盖(只写域名，端口固定 443)。
-    local reality_domain="${REALITY_DEST:-www.yahoo.com}"
+    # 可用 REALITY_SNI（或旧名 REALITY_DEST）环境变量覆盖(只写域名，端口固定 443)。
+    local reality_domain="${REALITY_SNI:-${REALITY_DEST:-www.yahoo.com}}"
+    reality_domain="${reality_domain%:*}"   # 容错：去掉误带的 :443
     local reality_dest="${reality_domain}:443"
     local reality_server_name="$reality_domain"
     print_success "伪装目标(SNI): ${YELLOW}$reality_server_name${NC}"
 
-    print_info "生成 x25519 密钥对..."
-    local x25519_output reality_private_key reality_public_key
-    x25519_output=$("$XRAY_BIN" x25519)
-    # 兼容新旧版本字段名：旧版 "Private key:" / "Public key:"，新版 "PrivateKey:" / "Password:"
-    reality_private_key=$(echo "$x25519_output" | grep -iE 'private[ ]?key' | awk -F: '{print $2}' | tr -d '[:space:]')
-    reality_public_key=$(echo "$x25519_output" | grep -iE 'public[ ]?key|password' | awk -F: '{print $2}' | tr -d '[:space:]')
-    if [ -z "$reality_private_key" ] || [ -z "$reality_public_key" ]; then
-        print_error "REALITY 密钥生成失败，无法解析 xray x25519 输出"
-        echo "$x25519_output"
-        exit 1
+    local reality_private_key reality_public_key
+    if [[ -n "${REALITY_PRIVATE_KEY:-}" && -n "${REALITY_PUBLIC_KEY:-}" ]]; then
+        reality_private_key="$REALITY_PRIVATE_KEY"
+        reality_public_key="$REALITY_PUBLIC_KEY"
+        print_success "使用指定 x25519 密钥对"
+    elif [[ -n "${REALITY_PRIVATE_KEY:-}" ]]; then
+        # 只给了私钥：用 xray 反推公钥
+        reality_private_key="$REALITY_PRIVATE_KEY"
+        reality_public_key=$("$XRAY_BIN" x25519 -i "$REALITY_PRIVATE_KEY" 2>/dev/null \
+            | grep -iE 'public[ ]?key|password' | awk -F: '{print $2}' | tr -d '[:space:]')
+        if [[ -z "$reality_public_key" ]]; then
+            print_error "REALITY_PRIVATE_KEY 无法反推公钥，请同时提供 REALITY_PUBLIC_KEY"
+            exit 1
+        fi
+        print_success "使用指定私钥，已反推公钥"
+    else
+        print_info "生成 x25519 密钥对..."
+        local x25519_output
+        x25519_output=$("$XRAY_BIN" x25519)
+        # 兼容新旧版本字段名：旧版 "Private key:" / "Public key:"，新版 "PrivateKey:" / "Password:"
+        reality_private_key=$(echo "$x25519_output" | grep -iE 'private[ ]?key' | awk -F: '{print $2}' | tr -d '[:space:]')
+        reality_public_key=$(echo "$x25519_output" | grep -iE 'public[ ]?key|password' | awk -F: '{print $2}' | tr -d '[:space:]')
+        if [ -z "$reality_private_key" ] || [ -z "$reality_public_key" ]; then
+            print_error "REALITY 密钥生成失败，无法解析 xray x25519 输出"
+            echo "$x25519_output"
+            exit 1
+        fi
+        print_success "x25519 密钥对生成完成"
     fi
-    print_success "x25519 密钥对生成完成"
 
-    print_info "生成 shortId..."
     local reality_short_id
-    reality_short_id=$(openssl rand -hex 8)
-    print_success "shortId: ${YELLOW}$reality_short_id${NC}"
+    if [[ -n "${REALITY_SHORT_ID:-}" ]]; then
+        reality_short_id="$REALITY_SHORT_ID"
+        print_success "使用指定 shortId: ${YELLOW}$reality_short_id${NC}"
+    else
+        reality_short_id=$(openssl rand -hex 8)
+        print_success "生成随机 shortId: ${YELLOW}$reality_short_id${NC}"
+    fi
 
     # ---- 阶段7: 创建配置文件 ----
     print_step "7" "创建Xray配置文件"

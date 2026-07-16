@@ -153,6 +153,36 @@ curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/xr
 sudo bash src/xray/server.sh install 8443
 ```
 
+### 固定参数（换机器只改 IP）
+
+REALITY 的 UUID / 密钥对 / shortId / SNI / 端口都可固定，固定后每台新机器装出来参数一致，客户端分享链接只有 IP 变，无需重配客户端。
+
+方式一，用环境变量传入（`-E` 保留变量）：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/xray/server.sh \
+  | sudo -E env \
+    XRAY_UUID=你的uuid \
+    REALITY_PRIVATE_KEY=你的私钥 \
+    REALITY_PUBLIC_KEY=你的公钥 \
+    REALITY_SHORT_ID=你的shortid \
+    REALITY_SNI=www.yahoo.com \
+    bash -s install
+```
+
+方式二，把参数放到本地文件 `/etc/xray-server.env`（安装时自动加载）：
+
+```bash
+sudo cp config/xray-server.env.example /etc/xray-server.env
+# 按需修改，然后正常安装
+curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/xray/server.sh | sudo bash -s install
+```
+
+模板见 [config/xray-server.env.example](config/xray-server.env.example)。
+
+> ⚠️ 模板里的默认密钥是本仓库公开值，仅供试用。正式使用请用 `xray uuid` / `xray x25519` / `openssl rand -hex 8` 生成你自己的一套并覆盖。
+> ⚠️ 优先级：命令行环境变量 > `/etc/xray-server.env` > 脚本随机生成。
+
 ### 一键卸载
 
 ```bash
