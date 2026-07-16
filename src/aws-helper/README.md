@@ -102,6 +102,19 @@ curl -fsSL "$BASE/xray/server.sh" | bash -s install
 - `aws` CLI（拉 SSM 时需要；纯字面值不需要）
 - 无需 jq（用 `--output text` 逐个参数拉取）
 
+### 安装 AWS CLI
+
+用配套脚本一键装官方 AWS CLI v2（自动识别架构、幂等）：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/aws-helper/install-awscli.sh | sudo bash
+
+# 强制重装/升级
+sudo bash install-awscli.sh --force
+```
+
+EC2 上推荐挂 IAM 角色（Instance Profile），无需 `aws configure`。验证：`aws sts get-caller-identity`。
+
 ## 子命令
 
 | 命令 | 说明 |
