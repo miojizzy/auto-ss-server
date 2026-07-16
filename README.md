@@ -226,6 +226,12 @@ curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/xr
 
 详细说明见 [docs/xray-install.md](docs/xray-install.md)。
 
+### AWS 自动部署（SSM 参数注入）
+
+把固定参数（UUID/密钥/shortId 等）存到 SSM Parameter Store，EC2 启动时（user-data）自动拉取真实值注入 `server.sh`，实现全自动部署且参数一致。工具 `src/aws-helper/ssm-env.sh` 负责把 SSM 路径解引用成真实值。
+
+详细说明见 [src/aws-helper/README.md](src/aws-helper/README.md)。
+
 ## Shadowsocks (Outline) 服务
 
 在单台服务器上一键部署/卸载 Shadowsocks（基于 outline-ss-server，编译二进制 + systemd 托管），脚本结构与 Xray 一致。
