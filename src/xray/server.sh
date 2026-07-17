@@ -334,6 +334,17 @@ EOF
 
     # ---- 阶段9: 创建 systemd 服务 ----
     print_step "9" "创建Systemd服务"
+
+    # 创建专用用户（如果不存在）
+    if ! id -u xrayuser >/dev/null 2>&1; then
+        useradd -r -s /usr/sbin/nologin xrayuser
+        print_success "创建专用用户 xrayuser"
+    fi
+
+    # 确保 xrayuser 能读配置和日志目录
+    chown -R xrayuser:xrayuser "$XRAY_LOG_DIR"
+    chmod 644 "$XRAY_CONFIG" "$REALITY_ENV"
+
     print_info "创建服务文件: $SERVICE_FILE"
     cat > "$SERVICE_FILE" <<'EOF'
 [Unit]
@@ -343,7 +354,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=root
+User=xrayuser
+Group=xrayuser
 ExecStart=/usr/local/Xray/xray -c /etc/xray/config.json
 Restart=on-failure
 RestartSec=5s
@@ -494,6 +506,7 @@ do_uninstall() {
     echo -e "${GREEN}═══════════════════════════════════════════════════════${NC}"
     echo ""
     print_info "提示：安装时装的依赖 (curl wget unzip uuid-runtime openssl) 为系统常用工具，未自动删除"
+    print_info "提示：专用用户 xrayuser 未删除（如需清理: userdel xrayuser）"
     echo ""
 }
 
