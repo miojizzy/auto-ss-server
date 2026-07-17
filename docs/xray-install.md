@@ -139,6 +139,7 @@ sudo bash src/xray/server.sh uninstall -y
 - 相关防火墙规则（如使用 UFW）
 
 > 安装时装的依赖（`curl wget unzip uuid-runtime openssl`）为系统常用工具，不会被删除。
+> 专用用户 `xrayuser` 不会被自动删除（如需清理：`userdel xrayuser`）。
 
 ## 环境变量
 

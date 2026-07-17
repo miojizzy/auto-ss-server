@@ -30,6 +30,7 @@ auto_ssserver/
     ├── ssserver/              # Shadowsocks 服务（旧版 Outline 安装脚本）
     ├── shadowsocks/           # Shadowsocks 一键部署（server.sh / client.sh）
     ├── xray/                  # Xray VLESS 一键部署（server.sh / client.sh）
+    ├── wg/                    # WireGuard 分流（wg.sh）
     └── crontab/               # 定时任务
 ```
 
@@ -232,6 +233,23 @@ curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/xr
 
 详细说明见 [src/aws-helper/README.md](src/aws-helper/README.md)。
 
+### WireGuard 分流（Surfshark 出口）
+
+让 xray 转发流量走 WireGuard → Surfshark 出口，SSH 和 xray 入站不受影响。
+
+```bash
+# 安装（传入 Surfshark WireGuard 配置文件）
+curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/wg/wg.sh | sudo bash -s install /path/to/wg0.conf
+
+# 启动 / 停止 / 状态 / 卸载
+curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/wg/wg.sh | sudo bash -s enable
+curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/wg/wg.sh | sudo bash -s disable
+curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/wg/wg.sh | sudo bash -s status
+curl -fsSL https://raw.githubusercontent.com/miojizzy/auto-ss-server/main/src/wg/wg.sh | sudo bash -s uninstall -y
+```
+
+详细说明见 [docs/wg-install.md](docs/wg-install.md)。
+
 ## Shadowsocks (Outline) 服务
 
 在单台服务器上一键部署/卸载 Shadowsocks（基于 outline-ss-server，编译二进制 + systemd 托管），脚本结构与 Xray 一致。
@@ -290,12 +308,12 @@ crontab -e
 
 - [设计文档](docs/DESIGN.md)
 - [Xray VLESS 安装文档](docs/xray-install.md)
+- [WireGuard 分流文档](docs/wg-install.md)
 - [客户端配置指南](docs/client-config.md)
 - [awsl 工具文档](src/awsl/README.md)
 - [启动模板文档](src/launch_template/README.md)
 - [Shadowsocks 文档（旧版 Outline）](src/ssserver/README.md)
 - [Shadowsocks 一键部署文档](src/shadowsocks/README.md)
-- [Xray VLESS 安装文档](docs/xray-install.md)
 - [定时任务文档](src/crontab/README.md)
 
 ## 前置要求
