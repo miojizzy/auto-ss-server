@@ -165,12 +165,11 @@ case "${1:-}" in
 enable)
     # 路由表默认路由走 wg0
     ip route add default dev "$WG_IFACE" table "$RT_TABLE_NAME" 2>/dev/null || true
-    # fwmark 规则
+    # fwmark 规则：带标记的包走 surfshark 表
     ip rule add fwmark "$FWMARK" table "$RT_TABLE_NAME" 2>/dev/null || true
-    # 标记 xrayuser 发起的新连接
+    # 标记 xrayuser 发起的新连接走 wg0
+    # 只标记 NEW 连接，已建立连接（如 SSH）不受影响
     iptables -t mangle -A OUTPUT -m owner --uid-owner "$XRAY_USER" -m conntrack --ctstate NEW -j MARK --set-mark "$FWMARK"
-    # 回到 wg0 的流量做 connmark
-    iptables -t mangle -A INPUT -i "$WG_IFACE" -j CONNMARK --set-mark "$FWMARK"
     # wg0 出口做 SNAT
     iptables -t nat -A POSTROUTING -o "$WG_IFACE" -j MASQUERADE
     # 确保 ip_forward 开启
@@ -179,7 +178,6 @@ enable)
 disable)
     # 删除 iptables 规则
     iptables -t mangle -D OUTPUT -m owner --uid-owner "$XRAY_USER" -m conntrack --ctstate NEW -j MARK --set-mark "$FWMARK" 2>/dev/null || true
-    iptables -t mangle -D INPUT -i "$WG_IFACE" -j CONNMARK --set-mark "$FWMARK" 2>/dev/null || true
     iptables -t nat -D POSTROUTING -o "$WG_IFACE" -j MASQUERADE 2>/dev/null || true
     # 删除路由规则
     ip rule del fwmark "$FWMARK" table "$RT_TABLE_NAME" 2>/dev/null || true
@@ -195,57 +193,53 @@ EOF
     cat > "$SERVICE_FILE" <<EOF
 [Unit]
 Description=WireGuard Split Tunnel (Surfshark)
-After=network-online.target wg-quick@wg0.service
+After=network-online.target xray.service
 Wants=network-online.target
-After=xray.service
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/usr/bin/wg-quick up $WG_IFACE
+ExecStartPre=/usr/bin/wg-quick up $WG_IFACE
 ExecStart=$IPRULES_FILE enable
 ExecStop=$IPRULES_FILE disable
-ExecStop=/usr/bin/wg-quick down $WG_IFACE
+ExecStopPost=/usr/bin/wg-quick down $WG_IFACE
 
 [Install]
 WantedBy=multi-user.target
 EOF
     print_success "服务文件创建完成: $SERVICE_FILE"
 
-    # ---- 阶段5: 启动 ----
-    print_step "5" "启动 WireGuard 分流"
+    # ---- 阶段5: 准备启动 ----
+    print_step "5" "配置完成"
     systemctl daemon-reload
     systemctl enable wg-split.service
-    systemctl start wg-split.service
-    sleep 2
+    print_success "服务已配置，未自动启动（避免安装过程中断 SSH）"
+    print_info "手动启动: sudo bash wg.sh enable"
+    print_info "手动停止: sudo bash wg.sh disable"
 
-    if systemctl is-active --quiet wg-split.service; then
-        print_success "WireGuard 分流已启动"
+    # ---- 阶段6: 验证配置 ----
+    print_step "6" "验证配置"
+    if wg-quick strip "$WG_IFACE" >/dev/null 2>&1; then
+        print_success "WireGuard 配置验证通过"
     else
-        print_error "启动失败，检查日志: journalctl -u wg-split -n 20"
+        print_error "WireGuard 配置验证失败"
         exit 1
     fi
-
-    # ---- 阶段6: 验证 ----
-    print_step "6" "验证分流"
-    local wg_ip
-    wg_ip=$(curl -s --max-time 10 --interface "$WG_IFACE" http://ip.sb 2>/dev/null || echo "")
-    local direct_ip
-    direct_ip=$(curl -s --max-time 10 http://ip.sb 2>/dev/null || echo "")
+    if systemctl is-enabled --quiet wg-split.service; then
+        print_success "wg-split 服务已启用（开机自启）"
+    fi
 
     echo ""
     echo -e "${GREEN}═══════════════════════════════════════════════════════${NC}"
-    echo -e "${GREEN}WireGuard 分流状态${NC}"
+    echo -e "${GREEN}WireGuard 分流安装完成${NC}"
     echo -e "${GREEN}═══════════════════════════════════════════════════════${NC}"
-    echo "  直连出口 IP:  $direct_ip (SSH/xray入站)"
-    echo "  WG 出口 IP:   $wg_ip (xray 转发流量)"
-    if [[ -n "$wg_ip" && "$wg_ip" != "$direct_ip" ]]; then
-        print_success "分流验证通过，IP 不同"
-    elif [[ -n "$wg_ip" && "$wg_ip" == "$direct_ip" ]]; then
-        print_error "警告: WG 出口 IP 与直连 IP 相同，分流可能未生效"
-    else
-        print_error "警告: 无法获取 WG 出口 IP，请手动验证"
-    fi
+    echo "  配置文件: $WG_CONF"
+    echo "  路由表:   $RT_TABLE_ID $RT_TABLE_NAME"
+    echo "  服务:     $SERVICE_FILE"
+    echo ""
+    echo "  启动分流: sudo bash wg.sh enable"
+    echo "  停止分流: sudo bash wg.sh disable"
+    echo "  查看状态: sudo bash wg.sh status"
     echo -e "${GREEN}═══════════════════════════════════════════════════════${NC}"
     echo ""
 }
@@ -331,7 +325,6 @@ do_uninstall() {
     $IPRULES_FILE disable 2>/dev/null || true
     # 兜底清理
     iptables -t mangle -D OUTPUT -m owner --uid-owner "$XRAY_USER" -m conntrack --ctstate NEW -j MARK --set-mark "$FWMARK" 2>/dev/null || true
-    iptables -t mangle -D INPUT -i "$WG_IFACE" -j CONNMARK --set-mark "$FWMARK" 2>/dev/null || true
     iptables -t nat -D POSTROUTING -o "$WG_IFACE" -j MASQUERADE 2>/dev/null || true
     print_success "iptables 规则已清理"
 
