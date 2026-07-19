@@ -361,6 +361,8 @@ Restart=on-failure
 RestartSec=5s
 StandardOutput=journal
 StandardError=journal
+# 允许非 root 用户绑定特权端口（443）
+AmbientCapabilities=CAP_NET_BIND_SERVICE
 
 [Install]
 WantedBy=multi-user.target
