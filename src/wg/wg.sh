@@ -160,6 +160,7 @@ RT_TABLE_NAME="surfshark"
 RT_TABLE_ID="100"
 FWMARK="0x1"
 XRAY_USER="xrayuser"
+XRAY_UID=$(id -u "$XRAY_USER" 2>/dev/null || echo "999")
 
 case "${1:-}" in
 enable)
@@ -167,20 +168,25 @@ enable)
     ip route add default dev "$WG_IFACE" table "$RT_TABLE_NAME" 2>/dev/null || true
     # fwmark 规则：带标记的包走 surfshark 表
     ip rule add fwmark "$FWMARK" table "$RT_TABLE_NAME" 2>/dev/null || true
+    # 确保非标记包走主路由表（eth0），优先级高于 surfshark 表
+    ip rule add uidrange "$((XRAY_UID+1)):-1" table main 2>/dev/null || true
+    ip rule add uidrange "0:$((XRAY_UID-1))" table main 2>/dev/null || true
     # 标记 xrayuser 发起的新连接走 wg0
     # 只标记 NEW 连接，已建立连接（如 SSH）不受影响
     iptables -t mangle -A OUTPUT -m owner --uid-owner "$XRAY_USER" -m conntrack --ctstate NEW -j MARK --set-mark "$FWMARK"
-    # wg0 出口做 SNAT
-    iptables -t nat -A POSTROUTING -o "$WG_IFACE" -j MASQUERADE
+    # wg0 出口做 SNAT（只对 xrayuser 的包）
+    iptables -t nat -A POSTROUTING -o "$WG_IFACE" -m owner --uid-owner "$XRAY_USER" -j MASQUERADE
     # 确保 ip_forward 开启
     sysctl -w net.ipv4.ip_forward=1 >/dev/null
     ;;
 disable)
     # 删除 iptables 规则
     iptables -t mangle -D OUTPUT -m owner --uid-owner "$XRAY_USER" -m conntrack --ctstate NEW -j MARK --set-mark "$FWMARK" 2>/dev/null || true
-    iptables -t nat -D POSTROUTING -o "$WG_IFACE" -j MASQUERADE 2>/dev/null || true
+    iptables -t nat -D POSTROUTING -o "$WG_IFACE" -m owner --uid-owner "$XRAY_USER" -j MASQUERADE 2>/dev/null || true
     # 删除路由规则
     ip rule del fwmark "$FWMARK" table "$RT_TABLE_NAME" 2>/dev/null || true
+    ip rule del uidrange "$((XRAY_UID+1)):-1" table main 2>/dev/null || true
+    ip rule del uidrange "0:$((XRAY_UID-1))" table main 2>/dev/null || true
     ip route flush table "$RT_TABLE_NAME" 2>/dev/null || true
     ;;
 esac
@@ -325,7 +331,7 @@ do_uninstall() {
     $IPRULES_FILE disable 2>/dev/null || true
     # 兜底清理
     iptables -t mangle -D OUTPUT -m owner --uid-owner "$XRAY_USER" -m conntrack --ctstate NEW -j MARK --set-mark "$FWMARK" 2>/dev/null || true
-    iptables -t nat -D POSTROUTING -o "$WG_IFACE" -j MASQUERADE 2>/dev/null || true
+    iptables -t nat -D POSTROUTING -o "$WG_IFACE" -m owner --uid-owner "$XRAY_USER" -j MASQUERADE 2>/dev/null || true
     print_success "iptables 规则已清理"
 
     print_step "3" "删除文件和服务"
