@@ -106,20 +106,35 @@ do_install() {
 
     # 读取原始配置，提取必要字段
     local privkey address dns peer_pubkey endpoint allowedips
-    privkey=$(grep -i 'PrivateKey' "$conf_file" | head -1 | awk '{print $3}')
-    address=$(grep -i 'Address' "$conf_file" | head -1 | awk '{print $3}')
-    dns=$(grep -i 'DNS' "$conf_file" | head -1 | awk '{print $3}')
-    peer_pubkey=$(grep -i 'PublicKey' "$conf_file" | head -1 | awk '{print $3}')
-    endpoint=$(grep -i 'Endpoint' "$conf_file" | head -1 | awk '{print $3}')
-    allowedips=$(grep -i 'AllowedIPs' "$conf_file" | head -1 | awk '{print $3}')
+    # 取 '=' 之后的完整值并去掉首尾空白，避免只截首个字段（DNS 有多个 IP 时会漏且留逗号）
+    _wg_val() { grep -i "^[[:space:]]*$1[[:space:]]*=" "$conf_file" | head -1 | sed -E 's/^[^=]*=[[:space:]]*//; s/[[:space:]]+$//'; }
+    privkey=$(_wg_val 'PrivateKey')
+    address=$(_wg_val 'Address')
+    dns=$(_wg_val 'DNS')
+    peer_pubkey=$(_wg_val 'PublicKey')
+    endpoint=$(_wg_val 'Endpoint')
+    allowedips=$(_wg_val 'AllowedIPs')
 
     if [[ -z "$privkey" || -z "$address" || -z "$peer_pubkey" || -z "$endpoint" ]]; then
         print_error "配置文件缺少必要字段 (PrivateKey/Address/PublicKey/Endpoint)"
         exit 1
     fi
 
+    # x25519 密钥应为 44 字符 base64（末尾 '='）。格式不对通常意味着 conf 被改坏，
+    # 会导致握手失败但服务端静默丢包（rx=0），极难排查——提前拦截。
+    local _keyre='^[A-Za-z0-9+/]{43}=$'
+    if [[ ! "$privkey" =~ $_keyre ]]; then
+        print_error "PrivateKey 格式非法（应为 44 字符 base64 x25519 私钥），请核对 Surfshark 原始配置"
+        exit 1
+    fi
+    if [[ ! "$peer_pubkey" =~ $_keyre ]]; then
+        print_error "PublicKey 格式非法（应为 44 字符 base64 x25519 公钥），请核对 Surfshark 原始配置"
+        exit 1
+    fi
+
     print_info "Endpoint: $endpoint"
     print_info "Address: $address"
+    print_info "本机公钥(pubkey): $(echo "$privkey" | wg pubkey 2>/dev/null || echo '解析失败')"
 
     mkdir -p /etc/wireguard
 
@@ -160,20 +175,20 @@ RT_TABLE_NAME="surfshark"
 RT_TABLE_ID="100"
 FWMARK="0x1"
 XRAY_USER="xrayuser"
-XRAY_UID=$(id -u "$XRAY_USER" 2>/dev/null || echo "999")
 
 case "${1:-}" in
 enable)
     # 路由表默认路由走 wg0
     ip route add default dev "$WG_IFACE" table "$RT_TABLE_NAME" 2>/dev/null || true
-    # fwmark 规则：带标记的包走 surfshark 表
+    # fwmark 规则：只有带标记的包才查 surfshark 表；未标记的包（含 SSH/root）
+    # 自然落到后面的 main 表走 eth0，无需额外 uidrange 规则。
     ip rule add fwmark "$FWMARK" table "$RT_TABLE_NAME" 2>/dev/null || true
-    # 确保非标记包走主路由表（eth0），优先级高于 surfshark 表
-    ip rule add uidrange "$((XRAY_UID+1)):-1" table main 2>/dev/null || true
-    ip rule add uidrange "0:$((XRAY_UID-1))" table main 2>/dev/null || true
     # 标记 xrayuser 发起的新连接走 wg0
     # 只标记 NEW 连接，已建立连接（如 SSH）不受影响
     iptables -t mangle -A OUTPUT -m owner --uid-owner "$XRAY_USER" -m conntrack --ctstate NEW -j MARK --set-mark "$FWMARK"
+    # MSS 钳制：wg0 MTU=1280，TLS 大包（ClientHello）会超 PMTU 被静默丢弃，
+    # 表现为 HTTP 通、HTTPS 卡死。钳到 1240 (=1280-40) 修复。
+    iptables -t mangle -A OUTPUT -p tcp --tcp-flags SYN,RST SYN -m owner --uid-owner "$XRAY_USER" -j TCPMSS --set-mss 1240
     # wg0 出口做 SNAT（只对 xrayuser 的包）
     iptables -t nat -A POSTROUTING -o "$WG_IFACE" -m owner --uid-owner "$XRAY_USER" -j MASQUERADE
     # 确保 ip_forward 开启
@@ -182,11 +197,10 @@ enable)
 disable)
     # 删除 iptables 规则
     iptables -t mangle -D OUTPUT -m owner --uid-owner "$XRAY_USER" -m conntrack --ctstate NEW -j MARK --set-mark "$FWMARK" 2>/dev/null || true
+    iptables -t mangle -D OUTPUT -p tcp --tcp-flags SYN,RST SYN -m owner --uid-owner "$XRAY_USER" -j TCPMSS --set-mss 1240 2>/dev/null || true
     iptables -t nat -D POSTROUTING -o "$WG_IFACE" -m owner --uid-owner "$XRAY_USER" -j MASQUERADE 2>/dev/null || true
     # 删除路由规则
     ip rule del fwmark "$FWMARK" table "$RT_TABLE_NAME" 2>/dev/null || true
-    ip rule del uidrange "$((XRAY_UID+1)):-1" table main 2>/dev/null || true
-    ip rule del uidrange "0:$((XRAY_UID-1))" table main 2>/dev/null || true
     ip route flush table "$RT_TABLE_NAME" 2>/dev/null || true
     ;;
 esac
@@ -262,6 +276,28 @@ do_enable() {
     if systemctl is-active --quiet wg-split.service; then
         print_success "WireGuard 分流已启动"
         wg show
+        # 握手自检：私钥错/endpoint 被墙时服务仍显示 active，但握手永不完成、
+        # 流量全黑洞（rx=0）。主动等一次握手，失败则明确报错，避免沉默失败。
+        print_info "等待 WireGuard 握手（最多 15s）..."
+        local rx="" latest=""
+        for _ in $(seq 1 15); do
+            latest=$(wg show "$WG_IFACE" latest-handshakes 2>/dev/null | awk '{print $2}' | head -1)
+            rx=$(wg show "$WG_IFACE" transfer 2>/dev/null | awk '{print $2}' | head -1)
+            if [[ -n "$latest" && "$latest" != "0" && "${rx:-0}" -gt 0 ]]; then
+                print_success "握手成功，隧道已通（rx=${rx}B）"
+                # 出口 IP 自检（走 wg0）
+                local wg_ip
+                wg_ip=$(timeout 8 curl -s --interface "$WG_IFACE" https://api.ipify.org 2>/dev/null || echo "")
+                [[ -n "$wg_ip" ]] && print_info "WG 出口 IP: $wg_ip"
+                return 0
+            fi
+            sleep 1
+        done
+        print_error "握手未完成（rx=${rx:-0}B）：隧道不通"
+        echo "  常见原因：① PrivateKey 与 Surfshark 账户不匹配（服务端静默丢包）"
+        echo "           ② Endpoint 被墙 / UDP 51820 不通"
+        echo "  排查：wg show $WG_IFACE  以及  echo <私钥> | wg pubkey  与账户注册公钥核对"
+        exit 1
     else
         print_error "启动失败"
         journalctl -u wg-split -n 20
