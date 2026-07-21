@@ -186,6 +186,10 @@ enable)
     # 标记 xrayuser 发起的新连接走 wg0
     # 只标记 NEW 连接，已建立连接（如 SSH）不受影响
     iptables -t mangle -A OUTPUT -m owner --uid-owner "$XRAY_USER" -m conntrack --ctstate NEW -j MARK --set-mark "$FWMARK"
+    # 关键：NEW 时把 mark 保存到 connmark，ESTABLISHED/RELATED 时从 connmark 恢复。
+    # 不加此规则则 ESTABLISHED 后续包无 mark → 走 ens5 出孟买 → 非对称路由 → Google/大站握手失败。
+    iptables -t mangle -A OUTPUT -m owner --uid-owner "$XRAY_USER" -m conntrack --ctstate NEW -j CONNMARK --save-mark
+    iptables -t mangle -A OUTPUT -m owner --uid-owner "$XRAY_USER" -m conntrack --ctstate ESTABLISHED,RELATED -j CONNMARK --restore-mark
     # MSS 钳制：wg0 MTU=1280，TLS 大包（ClientHello）会超 PMTU 被静默丢弃，
     # 表现为 HTTP 通、HTTPS 卡死。钳到 1240 (=1280-40) 修复。
     iptables -t mangle -A OUTPUT -p tcp --tcp-flags SYN,RST SYN -m owner --uid-owner "$XRAY_USER" -j TCPMSS --set-mss 1240
@@ -197,6 +201,8 @@ enable)
 disable)
     # 删除 iptables 规则
     iptables -t mangle -D OUTPUT -m owner --uid-owner "$XRAY_USER" -m conntrack --ctstate NEW -j MARK --set-mark "$FWMARK" 2>/dev/null || true
+    iptables -t mangle -D OUTPUT -m owner --uid-owner "$XRAY_USER" -m conntrack --ctstate NEW -j CONNMARK --save-mark 2>/dev/null || true
+    iptables -t mangle -D OUTPUT -m owner --uid-owner "$XRAY_USER" -m conntrack --ctstate ESTABLISHED,RELATED -j CONNMARK --restore-mark 2>/dev/null || true
     iptables -t mangle -D OUTPUT -p tcp --tcp-flags SYN,RST SYN -m owner --uid-owner "$XRAY_USER" -j TCPMSS --set-mss 1240 2>/dev/null || true
     iptables -t nat -D POSTROUTING -o "$WG_IFACE" -m owner --uid-owner "$XRAY_USER" -j MASQUERADE 2>/dev/null || true
     # 删除路由规则
