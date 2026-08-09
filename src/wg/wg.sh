@@ -323,6 +323,26 @@ do_enable() {
                 local wg_ip
                 wg_ip=$(timeout 8 curl -s --interface "$WG_IFACE" https://api.ipify.org 2>/dev/null || echo "")
                 [[ -n "$wg_ip" ]] && print_info "WG 出口 IP: $wg_ip"
+
+                # 分流自检：上面的 --interface wg0 是绕过策略路由直接绑网卡，
+                # 即使 `ip rule fwmark` 丢失也会成功 —— 服务照报 active、握手照样通，
+                # 唯一能暴露的就是 xrayuser 的真实出口。必须以 xrayuser 身份实测。
+                if ! ip rule list 2>/dev/null | grep -q "fwmark $FWMARK lookup $RT_TABLE_NAME"; then
+                    print_info "ip rule fwmark 缺失，补齐..."
+                    ip rule add fwmark "$FWMARK" table "$RT_TABLE_NAME" 2>/dev/null || true
+                fi
+                local xu_ip
+                xu_ip=$(timeout 10 runuser -u "$XRAY_USER" -- curl -s https://api.ipify.org 2>/dev/null || echo "")
+                if [[ -n "$xu_ip" && -n "$wg_ip" && "$xu_ip" == "$wg_ip" ]]; then
+                    print_success "分流生效：xrayuser 出口 = $xu_ip"
+                else
+                    print_error "分流未生效：xrayuser 出口=${xu_ip:-取不到}，期望=${wg_ip:-?}（应等于 WG 出口）"
+                    echo "  隧道通但流量没走进去。排查："
+                    echo "    ip rule list | grep fwmark          # 应有 fwmark $FWMARK lookup $RT_TABLE_NAME"
+                    echo "    ip route show table $RT_TABLE_NAME  # 应有 default dev $WG_IFACE"
+                    echo "    iptables -t mangle -L OUTPUT -n     # 应有 MARK/CONNMARK/TCPMSS"
+                    exit 1
+                fi
                 return 0
             fi
             sleep 1
