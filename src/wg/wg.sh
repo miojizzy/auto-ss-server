@@ -69,103 +69,8 @@ print_help() {
 }
 
 # ============ 安装 ============
-do_install() {
-    require_root
-
-    local conf_file="${1:-}"
-    if [[ -z "$conf_file" ]]; then
-        print_error "请提供 Surfshark WireGuard 配置文件路径"
-        echo "用法: sudo bash wg.sh install /path/to/wg0.conf"
-        exit 1
-    fi
-    if [[ ! -f "$conf_file" ]]; then
-        print_error "配置文件不存在: $conf_file"
-        exit 1
-    fi
-
-    # ---- 阶段0: 检查 xrayuser ----
-    print_step "0" "检查前置条件"
-    if ! id -u "$XRAY_USER" >/dev/null 2>&1; then
-        print_error "用户 $XRAY_USER 不存在，请先安装 xray server.sh"
-        exit 1
-    fi
-    if ! systemctl is-active --quiet xray; then
-        print_error "xray 服务未运行，请先启动: systemctl start xray"
-        exit 1
-    fi
-    print_success "前置条件检查通过"
-
-    # ---- 阶段1: 安装 WireGuard ----
-    print_step "1" "安装 WireGuard"
-    apt-get update -qq
-    apt-get install -y wireguard wireguard-tools iptables
-    print_success "WireGuard 安装完成"
-
-    # ---- 阶段2: 处理配置文件 ----
-    print_step "2" "配置 WireGuard"
-
-    # 读取原始配置，提取必要字段
-    local privkey address dns peer_pubkey endpoint allowedips
-    # 取 '=' 之后的完整值并去掉首尾空白，避免只截首个字段（DNS 有多个 IP 时会漏且留逗号）
-    _wg_val() { grep -i "^[[:space:]]*$1[[:space:]]*=" "$conf_file" | head -1 | sed -E 's/^[^=]*=[[:space:]]*//; s/[[:space:]]+$//'; }
-    privkey=$(_wg_val 'PrivateKey')
-    address=$(_wg_val 'Address')
-    dns=$(_wg_val 'DNS')
-    peer_pubkey=$(_wg_val 'PublicKey')
-    endpoint=$(_wg_val 'Endpoint')
-    allowedips=$(_wg_val 'AllowedIPs')
-
-    if [[ -z "$privkey" || -z "$address" || -z "$peer_pubkey" || -z "$endpoint" ]]; then
-        print_error "配置文件缺少必要字段 (PrivateKey/Address/PublicKey/Endpoint)"
-        exit 1
-    fi
-
-    # x25519 密钥应为 44 字符 base64（末尾 '='）。格式不对通常意味着 conf 被改坏，
-    # 会导致握手失败但服务端静默丢包（rx=0），极难排查——提前拦截。
-    local _keyre='^[A-Za-z0-9+/]{43}=$'
-    if [[ ! "$privkey" =~ $_keyre ]]; then
-        print_error "PrivateKey 格式非法（应为 44 字符 base64 x25519 私钥），请核对 Surfshark 原始配置"
-        exit 1
-    fi
-    if [[ ! "$peer_pubkey" =~ $_keyre ]]; then
-        print_error "PublicKey 格式非法（应为 44 字符 base64 x25519 公钥），请核对 Surfshark 原始配置"
-        exit 1
-    fi
-
-    print_info "Endpoint: $endpoint"
-    print_info "Address: $address"
-    print_info "本机公钥(pubkey): $(echo "$privkey" | wg pubkey 2>/dev/null || echo '解析失败')"
-
-    mkdir -p /etc/wireguard
-
-    # 写入配置，强制 Table=off 防止 SSH 断开
-    cat > "$WG_CONF" <<EOF
-[Interface]
-PrivateKey = $privkey
-Address = $address
-MTU = 1280
-Table = off
-${dns:+DNS = $dns}
-
-[Peer]
-PublicKey = $peer_pubkey
-AllowedIPs = 0.0.0.0/0
-Endpoint = $endpoint
-PersistentKeepalive = 25
-EOF
-    chmod 600 "$WG_CONF"
-    print_success "WireGuard 配置写入完成: $WG_CONF"
-
-    # ---- 阶段3: 配置策略路由和 iptables ----
-    print_step "3" "配置策略路由和 iptables"
-
-    # 路由表
-    if ! grep -q "$RT_TABLE_ID.*$RT_TABLE_NAME" /etc/iproute2/rt_tables 2>/dev/null; then
-        echo "$RT_TABLE_ID $RT_TABLE_NAME" >> /etc/iproute2/rt_tables
-        print_success "添加路由表: $RT_TABLE_ID $RT_TABLE_NAME"
-    fi
-
-    # 写入 iprules 脚本（enable/disable 共用）
+# 写入 iprules 脚本（enable/disable 共用）。抽成函数供 install 与 enable 自愈路径共用。
+_write_iprules() {
     cat > "$IPRULES_FILE" <<'EOF'
 #!/bin/bash
 set -euo pipefail
@@ -212,6 +117,119 @@ disable)
 esac
 EOF
     chmod +x "$IPRULES_FILE"
+}
+
+do_install() {
+    require_root
+
+    local conf_file="${1:-}"
+    if [[ -z "$conf_file" ]]; then
+        print_error "请提供 Surfshark WireGuard 配置文件路径"
+        echo "用法: sudo bash wg.sh install /path/to/wg0.conf"
+        exit 1
+    fi
+    if [[ ! -f "$conf_file" ]]; then
+        print_error "配置文件不存在: $conf_file"
+        exit 1
+    fi
+
+    # ---- 阶段0: 检查 xrayuser ----
+    print_step "0" "检查前置条件"
+    if ! id -u "$XRAY_USER" >/dev/null 2>&1; then
+        print_error "用户 $XRAY_USER 不存在，请先安装 xray server.sh"
+        exit 1
+    fi
+    if ! systemctl is-active --quiet xray; then
+        print_error "xray 服务未运行，请先启动: systemctl start xray"
+        exit 1
+    fi
+    print_success "前置条件检查通过"
+
+    # ---- 阶段1: 安装 WireGuard ----
+    print_step "1" "安装 WireGuard"
+    apt-get update -qq
+    apt-get install -y wireguard wireguard-tools iptables
+    print_success "WireGuard 安装完成"
+
+    # ---- 阶段2: 处理配置文件 ----
+    print_step "2" "配置 WireGuard"
+
+    # 源 conf 若就是目标 $WG_CONF，下面的 `cat > "$WG_CONF"` 会在读取字段前把它截断，
+    # 导致解析出空值、install 中途失败（且原配置已丢）。先复制到临时文件再读。
+    if [[ "$(readlink -f "$conf_file")" == "$(readlink -f "$WG_CONF")" ]]; then
+        cp "$conf_file" /tmp/.wg_src_$$.conf
+        conf_file="/tmp/.wg_src_$$.conf"
+        trap 'rm -f /tmp/.wg_src_'"$$"'.conf' RETURN
+    fi
+
+    # 读取原始配置，提取必要字段
+    # 注：刻意不提取 DNS / AllowedIPs —— DNS 见下方写配置处的说明（会污染整机解析）；
+    # AllowedIPs 固定用 0.0.0.0/0（节点无 IPv6 出口，加 ::/0 只会让流量无处可去）。
+    local privkey address peer_pubkey endpoint
+    # 取 '=' 之后的完整值并去掉首尾空白，避免只截首个字段
+    _wg_val() { grep -i "^[[:space:]]*$1[[:space:]]*=" "$conf_file" | head -1 | sed -E 's/^[^=]*=[[:space:]]*//; s/[[:space:]]+$//'; }
+    privkey=$(_wg_val 'PrivateKey')
+    address=$(_wg_val 'Address')
+    peer_pubkey=$(_wg_val 'PublicKey')
+    endpoint=$(_wg_val 'Endpoint')
+
+    if [[ -z "$privkey" || -z "$address" || -z "$peer_pubkey" || -z "$endpoint" ]]; then
+        print_error "配置文件缺少必要字段 (PrivateKey/Address/PublicKey/Endpoint)"
+        exit 1
+    fi
+
+    # x25519 密钥应为 44 字符 base64（末尾 '='）。格式不对通常意味着 conf 被改坏，
+    # 会导致握手失败但服务端静默丢包（rx=0），极难排查——提前拦截。
+    local _keyre='^[A-Za-z0-9+/]{43}=$'
+    if [[ ! "$privkey" =~ $_keyre ]]; then
+        print_error "PrivateKey 格式非法（应为 44 字符 base64 x25519 私钥），请核对 Surfshark 原始配置"
+        exit 1
+    fi
+    if [[ ! "$peer_pubkey" =~ $_keyre ]]; then
+        print_error "PublicKey 格式非法（应为 44 字符 base64 x25519 公钥），请核对 Surfshark 原始配置"
+        exit 1
+    fi
+
+    print_info "Endpoint: $endpoint"
+    print_info "Address: $address"
+    print_info "本机公钥(pubkey): $(echo "$privkey" | wg pubkey 2>/dev/null || echo '解析失败')"
+
+    mkdir -p /etc/wireguard
+
+    # 写入配置，强制 Table=off 防止 SSH 断开
+    #
+    # 刻意不写 DNS 行：wg-quick 的 DNS= 会经 resolvconf 把 VPN 的 DNS 注册成
+    # systemd-resolved 的全局默认路由(~.)，接管整机解析。实测 Surfshark 的
+    # 162.252.172.57 会把 www.google.com 解析成 92.249.39.223(俄罗斯 IP，非 Google)，
+    # TCP 连过去必然超时 —— 表现为"只有 Google 打不开"，极难排查。
+    # 分流只需要路由流量，不需要接管 DNS，节点沿用自身解析(ens5/公共 DNS)即可。
+    cat > "$WG_CONF" <<EOF
+[Interface]
+PrivateKey = $privkey
+Address = $address
+MTU = 1280
+Table = off
+
+[Peer]
+PublicKey = $peer_pubkey
+AllowedIPs = 0.0.0.0/0
+Endpoint = $endpoint
+PersistentKeepalive = 25
+EOF
+    chmod 600 "$WG_CONF"
+    print_success "WireGuard 配置写入完成: $WG_CONF"
+
+    # ---- 阶段3: 配置策略路由和 iptables ----
+    print_step "3" "配置策略路由和 iptables"
+
+    # 路由表
+    if ! grep -q "$RT_TABLE_ID.*$RT_TABLE_NAME" /etc/iproute2/rt_tables 2>/dev/null; then
+        echo "$RT_TABLE_ID $RT_TABLE_NAME" >> /etc/iproute2/rt_tables
+        print_success "添加路由表: $RT_TABLE_ID $RT_TABLE_NAME"
+    fi
+
+    # 写入 iprules 脚本（enable/disable 共用）
+    _write_iprules
     print_success "策略路由脚本写入完成: $IPRULES_FILE"
 
     # ---- 阶段4: 创建 systemd 服务 ----
@@ -277,6 +295,16 @@ do_enable() {
         print_error "WireGuard 未安装，请先运行: sudo bash wg.sh install <conf>"
         exit 1
     fi
+
+    # 自愈：预装 AMI 里烘焙的 iprules.sh 可能是修复前的旧副本，而 enable 只执行落盘脚本、
+    # 从不刷新它 —— 导致仓库里的修复对 AMI 起的节点永远不生效（CONNMARK 缺失，
+    # ESTABLISHED 包走非对称路由，Google 等大站静默卡死）。缺关键规则就地重写。
+    if [[ ! -f "$IPRULES_FILE" ]] || ! grep -q 'CONNMARK --restore-mark' "$IPRULES_FILE" 2>/dev/null; then
+        print_info "检测到 iprules.sh 缺失或过期（无 CONNMARK 规则），重新写入..."
+        _write_iprules
+        print_success "iprules.sh 已更新"
+    fi
+
     systemctl start wg-split.service
     sleep 2
     if systemctl is-active --quiet wg-split.service; then
