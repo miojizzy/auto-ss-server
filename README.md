@@ -2,6 +2,26 @@
 
 AWS EC2 自动化 Shadowsocks 代理服务器管理工具。
 
+> ## ⚠️ 改了 `src/` 里的安装脚本？必须重做 AMI
+>
+> 消费方(hermes skill `proxy-node-aws`)有两条建节点路径：
+> - `--from build`：跑 user-data，从 GitHub 拉本仓库脚本 → **改完立即生效**
+> - `--from ami`：从预装 AMI 快启，**完全不跑 user-data** → 改了也不会生效
+>
+> `src/wg/wg.sh`、`src/xray/server.sh` 这类脚本的**产物**(`/etc/wireguard/iprules.sh`、
+> systemd unit、xray 配置)是**烘焙进 AMI** 的。改了仓库但没重做 AMI，
+> 就会出现"build 的节点是新的、AMI 的节点是旧的"这种极难排查的分裂。
+>
+> **真实教训**：commit `6a4476d` 修好的 CONNMARK 规则写在 install 落盘的
+> `iprules.sh` 里，而 AMI 烘焙的是修复前副本 —— 修复对所有 `--from ami`
+> 节点**整整三周未生效**，期间反复以为是 GFW/MTU/DNS 问题。
+>
+> 缓解措施已加：`wg.sh enable` 会检测 `iprules.sh` 缺 CONNMARK 并自动重写(自愈)。
+> 但**自愈是兜底，不是替代** —— 改动后仍应重做 AMI。
+>
+> 重做流程见 skill 文档 `SKILL.md` 的「AMI 与构建流程必须保持同步」。
+> AMI 全局只保留一个(仅 Mumbai)，其余机房只走 build 流程。
+
 ## 功能特点
 
 - 🚀 **快速部署**: 一键创建 EC2 实例并配置 Shadowsocks
