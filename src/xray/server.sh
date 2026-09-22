@@ -153,6 +153,11 @@ do_install() {
     cd /tmp
     local xray_version xray_url
     xray_version=$(curl -s "https://api.github.com/repos/XTLS/Xray-core/releases/latest" | grep '"tag_name"' | cut -d'"' -f4)
+    # fallback: 如果 API 没返回 tag_name，用固定版本
+    if [ -z "$xray_version" ] || echo "$xray_version" | grep -q "api.github"; then
+        print_info "GitHub API 未返回版本号，使用 fallback 版本 v26.3.27"
+        xray_version="v26.3.27"
+    fi
     print_info "最新版本: ${xray_version}"
     xray_url="https://github.com/XTLS/Xray-core/releases/download/${xray_version}/Xray-linux-arm64-v8a.zip"
 
