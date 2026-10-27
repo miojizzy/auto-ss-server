@@ -12,31 +12,24 @@ $:
         - name: say hi
           script: echo "hi"
 
-# ⚠️ 已临时停用（2026-10-27）：CNB→GitHub 同步正在迁移到官方 tencentcom/git-sync 插件。
-# 旧逻辑（检测 [sync] 前缀 → amend → 强推 GitHub）整体注释保留如下，勿再启用。
-#
-# x-sync-template: &sync-template
-#   - imports:
-#       - https://cnb.cool/miojizzy/secrets/-/blob/main/github-secrets.yml
-#     stages:
-#       - name: check sync prefix
-#         script: |
-#           LATEST_MSG=$(git log -1 --pretty=%B)
-#           if [[ "$LATEST_MSG" == "[sync]"* ]]; then
-#             echo "检测到[sync]前缀，跳过"
-#             exit 78
-#           fi
-#       - name: add sync prefix and push to github
-#         script: |
-#           LATEST_MSG=$(git log -1 --pretty=%B)
-#           git config --global user.email "cnb-sync@bot.com"
-#           git config --global user.name "cnb-sync bot"
-#           GIT_COMMITTER_DATE="$(git log -1 --format=%ci)" \
-#           git commit --amend -m "[sync] $LATEST_MSG" --no-edit
-#           git remote add github https://$GITHUB_TOKEN@$GITHUB_REPO_AUTO_SS_SERVER || git remote set-url github https://$GITHUB_TOKEN@$GITHUB_REPO_AUTO_SS_SERVER
-#           git push github $(git rev-parse --abbrev-ref HEAD) --force
-#
-# develop:
-#   push: *sync-template
-# master:
-#   push: *sync-template
+# CNB → GitHub：官方 tencentcom/git-sync 插件，push 模式。
+# - 不改写提交 → 两边 SHA 一致，无需旧的 [sync] 前缀防循环
+# - 不设置 force → 非强推；GitHub 侧有 CNB 没见过的提交时会失败而不是覆盖
+#   （插件 ${PLUGIN_FORCE:+--force} 的特性：force 只要非空就强推，连 "false" 也算，
+#    所以这里绝对不能写 force 字段）
+x-sync-to-github: &sync-to-github
+  - imports:
+      - https://cnb.cool/miojizzy/secrets/-/blob/main/github-secrets.yml
+    stages:
+      - name: sync to github
+        image: tencentcom/git-sync
+        settings:
+          target_url: https://github.com/miojizzy/auto-ss-server.git
+          auth_type: https
+          username: miojizzy
+          password: ${GITHUB_TOKEN}
+          branch: main
+
+# 只同步 main。新增分支时，为每个分支复制一份并改 branch，不要把 branch 写死成 main。
+main:
+  push: *sync-to-github

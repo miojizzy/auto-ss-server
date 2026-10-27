@@ -1,29 +1,36 @@
 name: Sync to CNB
 
-# ⚠️ 已临时停用（2026-10-27）：CNB↔GitHub 同步正在迁移到官方 tencentcom/git-sync 插件。
-# 为避免旧 [sync] amend 方案与迁移过程互相覆盖，这里先停掉自动触发；
-# 新配置验证后会由下一个提交恢复（届时触发只保留 main）。
+# GitHub 为源，CNB 为镜像。
+# 使用官方 tencentcom/git-sync 插件：不改写提交，两边 SHA 一致。
+# 注意：不要设置 PLUGIN_FORCE。插件用 ${PLUGIN_FORCE:+--force} 判断，
+# 只要该变量非空（包括字符串 "false"）就会强推；不设置才是安全的默认行为。
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
-jobs:
-  disabled:
-    runs-on: ubuntu-latest
-    steps:
-      - name: noop
-        run: echo "sync-to-cnb is temporarily disabled (migrating to tencentcom/git-sync)"
+concurrency:
+  group: sync-to-cnb-${{ github.ref }}
+  cancel-in-progress: false
 
-# ---- 以下为停用前的旧逻辑（amend + force push，已废弃，勿恢复） ----
-# on:
-#   push:
-#     branches: [develop, main, master]
-# jobs:
-#   sync:
-#     runs-on: ubuntu-latest
-#     steps:
-#       - uses: actions/checkout@v4
-#         with: { fetch-depth: 0 }
-#       - name: Check sync prefix ... git commit --amend -m "[sync] ..." ; git push cnb --force
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Push to CNB
+        uses: docker://tencentcom/git-sync
+        env:
+          PLUGIN_TARGET_URL: "https://cnb.cool/miojizzy/auto-ss-server.git"
+          PLUGIN_AUTH_TYPE: "https"
+          PLUGIN_USERNAME: "cnb"
+          PLUGIN_PASSWORD: ${{ secrets.CNB_TOKEN }}
+          PLUGIN_BRANCH: "main"

@@ -324,6 +324,36 @@ crontab -e
 
 详细配置见 [src/crontab/README.md](src/crontab/README.md)。
 
+## CNB ↔ GitHub 同步
+
+本仓库在 GitHub 和 CNB 各有一份，用官方
+[`tencentcom/git-sync`](https://cnb.cool/cnb/plugins/tencentcom/git-sync) 插件双向同步：
+
+- **GitHub → CNB**：`.github/workflows/sync-to-cnb.yml`，push 到 `main` 触发。
+- **CNB → GitHub**：`.cnb.yml` 的 `x-sync-to-github`，push 到 `main` 触发。
+
+设计要点：
+
+- 插件**不改写提交**，两边 commit SHA 保持一致，可以直接用 `git rev-parse` 对比。
+- **不要设置 `force`**。插件的 `PLUGIN_FORCE` 只要非空就会拼出 `--force`
+  （写 `force: false` 也一样），只有**完全不写**才是非强推默认值；目标侧有分叉提交时
+  同步会失败退出，而不是静默覆盖。
+- 不再使用 `[sync]` commit message 前缀：插件推的是同一个 SHA，对端发现 ref 未变化后
+  不会触发下一轮，天然不会循环。
+- 只同步 `main`；tag 和其他分支不会自动同步。
+- 凭证：GitHub 侧用 Actions secrets `CNB_TOKEN`；CNB 侧从密钥仓库
+  `miojizzy/secrets` 的 `github-secrets.yml` 导入 `GITHUB_TOKEN`。
+
+**从旧 `[sync]` 方案迁移时的一次性对齐**：CNB 的 `main` 可能停在一条 GitHub 没有的
+`[sync]` 镜像提交上，第一次非强推会被拒绝。切换前先强制对齐一次：
+
+```bash
+# 把 GitHub 的 main 强推到 CNB，丢弃旧的 [sync] 镜像提交（内容相同，仅 SHA 不同）
+git push --force https://cnb.cool/miojizzy/auto-ss-server.git main:main
+```
+
+之后正常 push 即可，两个平台的 HEAD 会保持同一个 SHA。
+
 ## 文档
 
 - [设计文档](docs/DESIGN.md)
